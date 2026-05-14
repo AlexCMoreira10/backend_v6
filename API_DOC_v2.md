@@ -117,6 +117,71 @@ Exemplo de body de atualização:
   - `204 No Content` em caso de sucesso
   - `404 Not Found` se não existir
 
+### 3.6 Buscar por título
+
+- Método: `GET`
+- Endpoint: `{{baseUrl}}/api/livros/busca/titulo`
+- Query string: `titulo`
+- Exemplo:
+  - `GET http://localhost:3000/api/livros/busca/titulo?titulo=pequeno`
+- Observação:
+  - agora a busca encontra o termo em qualquer posição do título
+  - por exemplo, `pequeno` encontra `O Pequeno Príncipe`
+
+### 3.7 Busca avançada combinando filtros
+
+- Método: `GET`
+- Endpoint: `{{baseUrl}}/api/livros/busca/avancada`
+- Query string: qualquer combinação de:
+  - `titulo`
+  - `genero`
+  - `autor`
+  - `editora`
+  - `tipo`
+  - `ehDoacao`
+
+Exemplos:
+  - `GET http://localhost:3000/api/livros/busca/avancada?titulo=pequeno&ehDoacao=true`
+  - `GET http://localhost:3000/api/livros/busca/avancada?titulo=pequeno&genero=fantasia`
+  - `GET http://localhost:3000/api/livros/busca/avancada?genero=infantil&tipo=doacao`
+
+### 3.8 Buscar por gênero
+
+- Método: `GET`
+- Endpoint: `{{baseUrl}}/api/livros/busca/genero`
+- Query string: `genero`
+- Exemplo:
+  - `GET http://localhost:3000/api/livros/busca/genero?genero=fantasia`
+
+### 3.8 Buscar por editora
+
+- Método: `GET`
+- Endpoint: `{{baseUrl}}/api/livros/busca/editora`
+- Query string: `editora`
+- Exemplo:
+  - `GET http://localhost:3000/api/livros/busca/editora?editora=agir`
+
+### 3.9 Buscar por autor
+
+- Método: `GET`
+- Endpoint: `{{baseUrl}}/api/livros/busca/autor`
+- Query string: `autor`
+- Exemplo:
+  - `GET http://localhost:3000/api/livros/busca/autor?autor=antoine`
+
+### 3.10 Filtrar por tipo de livro
+
+- Método: `GET`
+- Endpoint: `{{baseUrl}}/api/livros/filtro/tipo`
+- Query string: `ehDoacao`
+- Exemplo:
+  - `GET http://localhost:3000/api/livros/filtro/tipo?ehDoacao=true`
+
+- Observação:
+  - aceita `true` ou `false`
+  - retorna livros de doação quando `true`
+  - retorna livros de troca/venda quando `false`
+
 ## 4. Erros comuns no Postman
 
 - `400 Bad Request`
@@ -131,8 +196,24 @@ Exemplo de body de atualização:
 - `500 Internal Server Error`
   - problema no servidor ou no Firebase
 
+## 5. Recomendações para criar o collection
 
-## 5. Exemplo de uso rápido
+- Crie uma coleção `API Livros`
+- Adicione requests:
+  - `Listar livros`
+  - `Criar livro`
+  - `Buscar livro por ID`
+  - `Atualizar livro`
+  - `Deletar livro`
+  - `Buscar por título`
+  - `Buscar por gênero`
+  - `Buscar por editora`
+  - `Buscar por autor`
+  - `Filtrar por tipo`
+- Use `{{baseUrl}}` nas URLs
+- Para requests `POST` e `PUT`, use `raw` + `JSON`
+
+## 6. Exemplo de uso rápido
 
 No Postman, copie a URL e defina o body conforme o exemplo abaixo para criar um livro:
 
@@ -151,3 +232,5 @@ No Postman, copie a URL e defina o body conforme o exemplo abaixo para criar um 
   "localizacao": "São Paulo - SP"
 }
 ```
+
+Use esse documento como base de referência para testar todas as rotas do backend no Postman.

@@ -11,7 +11,7 @@ import {
 const router = express.Router();
 
 router.post('/livros', verificarToken, criarLivroController);
-router.get('/livros', listarLivrosController);
+router.get('/livros', verificarToken, listarLivrosController);
 router.put('/livros/:id', verificarToken, atualizarLivroController);
 router.delete('/livros/:id', verificarToken, deletarLivroController);
 router.get('/me/livros', verificarToken, listarMeusLivrosController);
