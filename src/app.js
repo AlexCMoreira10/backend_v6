@@ -25,5 +25,8 @@ app.use('/api', livroRoutes);
 app.use('/api', trocaRoutes);
 app.use('/api', notificacaoRoutes);
 
+/* Rotas de IoT */
+import iotRoutes from './routes/iotRoutes.js';
+app.use('/api', iotRoutes);
 
 export default app;
