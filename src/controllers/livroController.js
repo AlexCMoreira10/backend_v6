@@ -92,8 +92,21 @@ export const criarLivroController = async (req, res) => {
 
 export const listarLivrosController = async (req, res) => {
   try {
-    const filtros = req.query;
+    const { id } = req.params;
 
+    if (id) {
+      const livro = await buscarLivroPorId(id);
+
+      if (!livro) {
+        return res.status(404).json({
+          erro: 'Livro não encontrado'
+        });
+      }
+
+      return res.json(livro);
+    }
+
+    const filtros = req.query;
     const resultado = await listarLivros(filtros);
 
     return res.json(resultado);
