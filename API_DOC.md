@@ -168,6 +168,61 @@ Exemplos:
   - retorna livros de doação quando `true`
   - retorna livros de troca/venda quando `false`
 
+### 3.11 Notificações
+
+#### Listar notificações do usuário
+
+- Método: `GET`
+- Endpoint: `{{baseUrl}}/api/notificacoes`
+- Cabeçalho: `Authorization: Bearer {{token}}`
+- Descrição: retorna as notificações associadas ao usuário autenticado.
+- Exemplo:
+  - `GET http://localhost:3000/api/notificacoes`
+- Resposta:
+  - `200 OK` com um array de notificações
+  - `401 Unauthorized` se o token estiver ausente ou inválido
+
+#### Marcar notificação como lida
+
+- Método: `PUT`
+- Endpoint: `{{baseUrl}}/api/notificacoes/:id/lida`
+- Cabeçalho: `Authorization: Bearer {{token}}`
+- Descrição: atualiza o status da notificação para lida.
+- Exemplo:
+  - `PUT http://localhost:3000/api/notificacoes/abc123/lida`
+- Resposta:
+  - `200 OK` com `{ mensagem: 'Notificação marcada como lida' }`
+  - `401 Unauthorized` se o token estiver ausente ou inválido
+
+### 3.12 Mensagens
+
+#### Enviar mensagem para outro usuário
+
+- Método: `POST`
+- Endpoint: `{{baseUrl}}/api/mensagens`
+- Cabeçalho:
+  - `Content-Type: application/json`
+  - `Authorization: Bearer {{token}}`
+- Body:
+  - `id_destinatario` (string)
+  - `conteudo` (string)
+- Observação: o remetente é obtido automaticamente a partir do token de autenticação.
+- Exemplo de body:
+
+```json
+{
+  "id_destinatario": "uid-do-destinatario",
+  "conteudo": "Olá! Gostaria de conversar sobre o livro."
+}
+```
+- Exemplo de uso:
+  - `POST http://localhost:3000/api/mensagens`
+- Resposta:
+  - `201 Created` com o objeto da mensagem enviada
+  - `400 Bad Request` se `id_destinatario` estiver ausente ou `conteudo` estiver vazio
+  - `404 Not Found` se o remetente ou destinatário não existir
+  - `401 Unauthorized` se o token estiver ausente ou inválido
+
 ## 4. Erros comuns no Postman
 
 - `400 Bad Request`

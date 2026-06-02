@@ -7,6 +7,7 @@ import userRoutes from './routes/userRoutes.js';
 import livroRoutes from './routes/livroRoutes.js';
 import trocaRoutes from './routes/trocaRoutes.js';
 import notificacaoRoutes from './routes/notificacaoRoutes.js';
+import mensagemRoutes from './routes/mensagemRoutes.js';
 
 /*configurações*/
 const app = express();
@@ -24,6 +25,6 @@ app.use('/api', userRoutes);
 app.use('/api', livroRoutes);
 app.use('/api', trocaRoutes);
 app.use('/api', notificacaoRoutes);
-
+app.use('/api', mensagemRoutes);
 
 export default app;

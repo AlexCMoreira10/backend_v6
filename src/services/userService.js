@@ -12,3 +12,15 @@ export const salvarUsuarioSeNaoExistir = async (usuario) => {
 
   return usuario;
 };
+
+export const buscarUsuarioPorId = async (uid) => {
+  const docRef = collection.doc(uid);
+  const doc = await docRef.get();
+
+  if (!doc.exists) return null;
+
+  return {
+    id: doc.id,
+    ...doc.data()
+  };
+};
