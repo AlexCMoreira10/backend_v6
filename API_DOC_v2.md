@@ -287,5 +287,3 @@ No Postman, copie a URL e defina o body conforme o exemplo abaixo para criar um 
   "localizacao": "São Paulo - SP"
 }
 ```
-
-Use esse documento como base de referência para testar todas as rotas do backend no Postman.
