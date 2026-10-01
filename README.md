@@ -1,5 +1,9 @@
 # API de Livros - Uso no Postman
 
+## Configuração do Firebase
+
+Crie um arquivo `.env` na raiz usando `.env.example` como referência e preencha `FIREBASE_PROJECT_ID`, `FIREBASE_CLIENT_EMAIL` e `FIREBASE_PRIVATE_KEY` com os dados da conta de serviço do Firebase. Na chave privada, mantenha as quebras de linha como `\n`.
+
 ## 1. Visão geral
 
 - Base URL: `http://localhost:3000/api`

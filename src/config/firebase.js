@@ -1,27 +1,20 @@
 import admin from 'firebase-admin';
-import { createRequire } from 'module';
-import path from 'path';
 import dotenv from 'dotenv';
 
 dotenv.config();
 
-const require = createRequire(import.meta.url);
-const serviceAccountPath = process.env.FIREBASE_SERVICE_ACCOUNT_PATH;
+const projectId = process.env.FIREBASE_PROJECT_ID;
+const clientEmail = process.env.FIREBASE_CLIENT_EMAIL;
+const privateKey = process.env.FIREBASE_PRIVATE_KEY?.replace(/\\n/g, '\n');
 
-if (!serviceAccountPath) {
+if (!projectId || !clientEmail || !privateKey) {
   throw new Error(
-    'FIREBASE_SERVICE_ACCOUNT_PATH não está definido. Crie um arquivo .env com o caminho para serviceAccountKey.json'
+    'Defina FIREBASE_PROJECT_ID, FIREBASE_CLIENT_EMAIL e FIREBASE_PRIVATE_KEY no arquivo .env.'
   );
 }
 
-const resolvedPath = path.isAbsolute(serviceAccountPath)
-  ? serviceAccountPath
-  : path.resolve(process.cwd(), serviceAccountPath);
-
-const serviceAccount = require(resolvedPath);
-
 admin.initializeApp({
-  credential: admin.credential.cert(serviceAccount),
+  credential: admin.credential.cert({ projectId, clientEmail, privateKey }),
 });
 
 // 🔥 Exporta o admin completo
