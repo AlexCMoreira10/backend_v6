@@ -11,10 +11,10 @@ Crie um arquivo `.env` na raiz usando `.env.example` como referência e preencha
 
 ### 🔐 Autenticação
 
-- Todas as rotas (exceto futuras rotas públicas) exigem autenticação via Firebase.
+- Todas as rotas exigem autenticação via Firebase, exceto o cadastro de usuário.
 - Cabeçalho obrigatório em todas as requisições protegidas:
   - Authorization: Bearer {{token}}
-- O `token` deve ser obtido via login com Google no Firebase.
+- O `token` deve ser obtido após o login no Firebase. Após o cadastro por e-mail e senha, o front deve autenticar o usuário no Firebase e usar o ID token retornado nas rotas protegidas.
 
 ## 2. Configuração sugerida no Postman
 
@@ -28,22 +28,106 @@ Crie um arquivo `.env` na raiz usando `.env.example` como referência e preencha
 
 ## 3. Rotas da API
 
+### Cadastro de usuário
+
+- Método: `POST`
+- Endpoint: `{{baseUrl}}/api/usuarios/cadastro`
+- Autenticação: não exige token.
+- Cabeçalho: `Content-Type: application/json`
+- Descrição: cria a conta no Firebase Authentication usando e-mail e senha e salva o perfil em `users/{_id}` no Firestore. A senha é enviada somente ao Firebase Authentication e nunca é armazenada no perfil.
+
+Campos enviados no body:
+
+| Atributo | Descrição | Tipo de dado | Obrigatório | Exemplo de valor |
+|---|---|---|---|---|
+| `nome` | Nome completo | String | Sim | `"Fernando Alguns Silva"` |
+| `email` | Endereço eletrônico para login | String | Sim | `"fernando@email.com"` |
+| `senha` | Senha para login (mínimo de 8 caracteres) | String | Sim | `"senhaSegura123"` |
+| `telefone` | Números para contato | Array de strings | Sim | `["(11)99999-9999", "(21)88888-8888"]` |
+| `data_nascimento` | Data de nascimento em formato ISO 8601 | Data | Sim | `"2000-09-03T18:30:00.000Z"` |
+| `endereco` | Endereço para entrega | Objeto | Não | Ver exemplo abaixo |
+| `geocode` | Geolocalização aproximada em GeoJSON Point | Objeto | Não | Ver exemplo abaixo |
+
+Exemplo de body:
+
+```json
+{
+  "nome": "Fernando Alguns Silva",
+  "email": "fernando@email.com",
+  "senha": "senhaSegura123",
+  "telefone": ["(11)99999-9999", "(21)88888-8888"],
+  "data_nascimento": "2000-09-03T18:30:00.000Z",
+  "endereco": {
+    "rua": "Rua das Macumbas",
+    "numero": 5,
+    "complemento": "Apto 12",
+    "bairro": "Vila das Flores",
+    "cidade": "São Paulo",
+    "estado": "SP",
+    "cep": "05800-000"
+  },
+  "geocode": {
+    "type": "Point",
+    "coordinates": [-46.6333, -23.5505]
+  }
+}
+```
+
+- `geoJson` também pode ser enviado como nome alternativo para `geocode`; o perfil é salvo usando o campo `geocode`.
+- As coordenadas seguem a ordem GeoJSON `[longitude, latitude]`, em graus decimais. No futuro, esse ponto poderá ser usado para buscar livros por raio e facilitar trocas e doações.
+- `_id` é gerado pelo servidor a partir do UID do Firebase Authentication e não deve ser enviado pelo cliente.
+- `transacoes` é inicializado pelo servidor com `total`, `compras`, `vendas`, `trocas`, `doacoes_enviadas` e `doacoes_recebidas` iguais a `0`.
+- `limite_doacoes` é inicializado pelo servidor com `{ "recebidas": 1, "utilizadas": 0, "disponiveis": 1 }`.
+- Exemplo de resposta:
+
+```json
+{
+  "id": "uid-gerado-pelo-firebase",
+  "_id": "uid-gerado-pelo-firebase",
+  "uid": "uid-gerado-pelo-firebase",
+  "nome": "Fernando Alguns Silva",
+  "email": "fernando@email.com",
+  "telefone": ["(11)99999-9999", "(21)88888-8888"],
+  "data_nascimento": "2000-09-03T18:30:00.000Z",
+  "foto": "",
+  "transacoes": {
+    "total": 0,
+    "compras": 0,
+    "vendas": 0,
+    "trocas": 0,
+    "doacoes_enviadas": 0,
+    "doacoes_recebidas": 0
+  },
+  "limite_doacoes": {
+    "recebidas": 1,
+    "utilizadas": 0,
+    "disponiveis": 1
+  }
+}
+```
+
+- Resposta:
+  - `201 Created` se o usuário for cadastrado
+  - `400 Bad Request` se algum campo obrigatório ou formato for inválido
+  - `409 Conflict` se o e-mail já estiver cadastrado
+  - `500 Internal Server Error` se ocorrer um erro ao criar a conta ou salvar o perfil
+
 ### 3.1 Listar livros (com paginação e filtros)
 
 - Método: `GET`
 - Endpoint: `{{baseUrl}}/api/livros`
 
-### 3.1 Listar todos os livros
+### 3.2 Listar todos os livros
 
 - Método: `GET`
-- Endpoint: `{{baseUrl}}/api/livros/api/livros`
+- Endpoint: `{{baseUrl}}/api/livros`
 - Resposta: `200 OK`
 - Exemplo de uso:
   - Request: `GET http://localhost:3000/api/livros?page=1&limit=10&titulo=pequeno`
 
 - Resposta: 200 OK
 
-### 3.2 Criar um novo livro
+### 3.3 Criar um novo livro
 
 - Método: `POST`
 - Endpoint: `{{baseUrl}}/api/livros`
@@ -81,7 +165,7 @@ Exemplo de body válido:
   - `preco` não é permitido se `tipo` for `doacao` ou `troca`
   - `usuarioId` obrigatório
 
-### 3.3 Buscar livro por ID
+### 3.4 Buscar livro por ID
 
 - Método: `GET`
 - Endpoint: `{{baseUrl}}/api/livros/:id`
@@ -90,7 +174,7 @@ Exemplo de body válido:
   - `200 OK` com o livro
   - `404 Not Found` se não existir
 
-### 3.4 Atualizar livro
+### 3.5 Atualizar livro
 
 - Método: `PUT`
 - Endpoint: `{{baseUrl}}/api/livros/:id`
@@ -112,7 +196,7 @@ Exemplo de body de atualização:
   - `tipo`, `condicao` e `status` devem respeitar os valores permitidos
   - `preco` só pode ser enviado se `tipo` for `venda`
 
-### 3.5 Deletar livro
+### 3.6 Deletar livro
 
 - Método: `DELETE`
 - Endpoint: `{{baseUrl}}/api/livros/:id`
@@ -121,7 +205,7 @@ Exemplo de body de atualização:
   - `204 No Content` em caso de sucesso
   - `404 Not Found` se não existir
 
-### 3.6 Buscar por título
+### 3.7 Buscar por título
 
 - Método: `GET`
 - Endpoint: `{{baseUrl}}/api/livros/busca/titulo`
@@ -132,7 +216,7 @@ Exemplo de body de atualização:
   - agora a busca encontra o termo em qualquer posição do título
   - por exemplo, `pequeno` encontra `O Pequeno Príncipe`
 
-### 3.7 Busca avançada combinando filtros
+### 3.8 Busca avançada combinando filtros
 
 - Método: `GET`
 - Endpoint: `{{baseUrl}}/api/livros/busca/avancada`
@@ -149,7 +233,7 @@ Exemplos:
   - `GET http://localhost:3000/api/livros/busca/avancada?titulo=pequeno&genero=fantasia`
   - `GET http://localhost:3000/api/livros/busca/avancada?genero=infantil&tipo=doacao`
 
-### 3.8 Buscar por gênero
+### 3.9 Buscar por gênero
 
 - Método: `GET`
 - Endpoint: `{{baseUrl}}/api/livros/busca/genero`
@@ -157,7 +241,7 @@ Exemplos:
 - Exemplo:
   - `GET http://localhost:3000/api/livros/busca/genero?genero=fantasia`
 
-### 3.8 Buscar por editora
+### 3.10 Buscar por editora
 
 - Método: `GET`
 - Endpoint: `{{baseUrl}}/api/livros/busca/editora`
@@ -165,7 +249,7 @@ Exemplos:
 - Exemplo:
   - `GET http://localhost:3000/api/livros/busca/editora?editora=agir`
 
-### 3.9 Buscar por autor
+### 3.11 Buscar por autor
 
 - Método: `GET`
 - Endpoint: `{{baseUrl}}/api/livros/busca/autor`
@@ -173,7 +257,7 @@ Exemplos:
 - Exemplo:
   - `GET http://localhost:3000/api/livros/busca/autor?autor=antoine`
 
-### 3.10 Filtrar por tipo de livro
+### 3.12 Filtrar por tipo de livro
 
 - Método: `GET`
 - Endpoint: `{{baseUrl}}/api/livros/filtro/tipo`
@@ -186,7 +270,7 @@ Exemplos:
   - retorna livros de doação quando `true`
   - retorna livros de troca/venda quando `false`
 
-### 3.11 Notificações
+### 3.13 Notificações
 
 #### Listar notificações do usuário
 
@@ -212,7 +296,9 @@ Exemplos:
   - `200 OK` com `{ mensagem: 'Notificação marcada como lida' }`
   - `401 Unauthorized` se o token estiver ausente ou inválido
 
-### 3.12 Mensagens
+### 3.14 Mensagens
+
+> **Status:** o envio, o histórico, a listagem de conversas e a marcação de leitura estão implementados.
 
 #### Enviar mensagem para outro usuário
 
@@ -241,6 +327,115 @@ Exemplos:
   - `404 Not Found` se o remetente ou destinatário não existir
   - `401 Unauthorized` se o token estiver ausente ou inválido
 
+#### Listar mensagens do usuário autenticado
+
+- Método: `GET`
+- Endpoint: `{{baseUrl}}/api/mensagens`
+- Cabeçalho: `Authorization: Bearer {{token}}`
+- Descrição: retorna as mensagens em que o usuário autenticado é remetente ou destinatário. O usuário é identificado pelo token; não enviar nem aceitar `id_remetente` pela query string ou pelo body.
+- Exemplo:
+  - `GET http://localhost:3000/api/mensagens`
+- Resposta:
+  - `200 OK` com um array de mensagens
+  - `401 Unauthorized` se o token estiver ausente ou inválido
+- Cada mensagem deve conter, no mínimo:
+
+```json
+{
+  "id": "id-da-mensagem",
+  "id_remetente": "uid-do-remetente",
+  "id_destinatario": "uid-do-destinatario",
+  "conteudo": "Texto da mensagem",
+  "data_envio": "2026-10-12T15:00:00.000Z"
+}
+```
+
+#### Listar conversas do usuário autenticado
+
+- Método: `GET`
+- Endpoint: `{{baseUrl}}/api/mensagens/conversas`
+- Cabeçalho: `Authorization: Bearer {{token}}`
+- Descrição: retorna uma conversa por usuário com quem o usuário autenticado trocou mensagens, incluindo o outro participante, a última mensagem e a quantidade de mensagens não lidas.
+- A rota `/conversas` é registrada antes de `/:id_usuario` para que o caminho estático não seja interpretado como um ID de usuário.
+- Exemplo:
+  - `GET http://localhost:3000/api/mensagens/conversas`
+- Resposta:
+  - `200 OK` com um array de conversas
+  - `401 Unauthorized` se o token estiver ausente ou inválido
+- Formato de cada conversa:
+
+```json
+{
+  "outro_participante": {
+    "id": "uid-do-usuario",
+    "nome": "Nome do usuário",
+    "foto": "https://exemplo.com/foto.jpg"
+  },
+  "ultima_mensagem": {
+    "id": "id-da-mensagem",
+    "id_remetente": "uid-do-remetente",
+    "id_destinatario": "uid-do-destinatario",
+    "conteudo": "Texto da mensagem",
+    "data_envio": "2026-10-12T15:00:00.000Z"
+  },
+  "mensagens_nao_lidas": 2
+}
+```
+
+- Observação: `mensagens_nao_lidas` deve ser `0` quando não houver mensagens recebidas pendentes de leitura. Se o backend não fornecer `nome` e `foto`, o front deverá consultar outro endpoint de usuários.
+
+#### Listar mensagens trocadas com um usuário
+
+- Método: `GET`
+- Endpoint: `{{baseUrl}}/api/mensagens/:id_usuario`
+- Cabeçalho: `Authorization: Bearer {{token}}`
+- Query string:
+  - `page` (opcional, padrão `1`)
+  - `limit` (opcional, padrão `20`)
+- Validação: `page` deve ser maior que `0`; `limit` deve estar entre `1` e `100`.
+- Descrição: retorna as mensagens trocadas entre o usuário autenticado e o usuário informado, em ordem cronológica crescente (`data_envio`), com paginação. O usuário autenticado deve ser obtido pelo token.
+- Exemplo:
+  - `GET http://localhost:3000/api/mensagens/uid-do-usuario?page=1&limit=20`
+- Resposta:
+  - `200 OK` com as mensagens e os dados de paginação
+  - `400 Bad Request` se `page` ou `limit` forem inválidos
+  - `401 Unauthorized` se o token estiver ausente ou inválido
+- Formato da resposta:
+
+```json
+{
+  "mensagens": [
+    {
+      "id": "id-da-mensagem",
+      "id_remetente": "uid-do-remetente",
+      "id_destinatario": "uid-do-destinatario",
+      "conteudo": "Texto da mensagem",
+      "data_envio": "2026-10-12T15:00:00.000Z"
+    }
+  ],
+  "paginacao": {
+    "pagina": 1,
+    "limite": 20,
+    "total": 1,
+    "total_paginas": 1
+  }
+}
+```
+
+#### Marcar mensagem como lida
+
+- Método: `PUT`
+- Endpoint: `{{baseUrl}}/api/mensagens/:id/lida`
+- Cabeçalho: `Authorization: Bearer {{token}}`
+- Descrição: marca como lida uma mensagem recebida. O backend deve confirmar que o usuário autenticado é o destinatário; mensagens de outros usuários ou enviadas pelo próprio usuário não podem ser marcadas por esta rota.
+- Exemplo:
+  - `PUT http://localhost:3000/api/mensagens/id-da-mensagem/lida`
+- Resposta:
+  - `200 OK` com `{ "mensagem": "Mensagem marcada como lida" }`
+  - `401 Unauthorized` se o token estiver ausente ou inválido
+  - `403 Forbidden` se o usuário autenticado não for o destinatário
+  - `404 Not Found` se a mensagem não existir
+
 ## 4. Erros comuns no Postman
 
 - `400 Bad Request`
@@ -252,6 +447,9 @@ Exemplos:
 - `404 Not Found`
   - ID de livro inexistente
 
+- `409 Conflict`
+  - e-mail já cadastrado na criação de usuário
+
 - `500 Internal Server Error`
   - problema no servidor ou no Firebase
 
@@ -259,6 +457,7 @@ Exemplos:
 
 - Crie uma coleção `API Livros`
 - Adicione requests:
+  - `Cadastrar usuário`
   - `Listar livros`
   - `Criar livro`
   - `Buscar livro por ID`
