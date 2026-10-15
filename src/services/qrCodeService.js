@@ -1,7 +1,11 @@
 import QRCode from 'qrcode';
 
 const baseUrl = () => {
-  const value = process.env.PUBLIC_APP_URL || 'http://localhost:3000/api';
+  const value = process.env.PUBLIC_APP_URL
+    || (process.env.NODE_ENV === 'production' ? '' : 'http://localhost:5173');
+  if (!value) {
+    throw new Error('PUBLIC_APP_URL deve apontar para a origem pública do frontend');
+  }
   const url = new URL(value);
 
   if (!['http:', 'https:'].includes(url.protocol)) {

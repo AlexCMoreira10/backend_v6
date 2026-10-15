@@ -2,7 +2,9 @@
 
 ## Configuração do Firebase
 
-Crie um arquivo `.env` na raiz usando `.env.example` como referência e preencha `FIREBASE_PROJECT_ID`, `FIREBASE_CLIENT_EMAIL` e `FIREBASE_PRIVATE_KEY` com os dados da conta de serviço do Firebase. Na chave privada, mantenha as quebras de linha como `\n`. Configure `PUBLIC_APP_URL` com a URL pública usada pelo QR Code (em produção, a URL base pública da aplicação).
+Crie um arquivo `.env` na raiz usando `.env.example` como referência e preencha `FIREBASE_PROJECT_ID`, `FIREBASE_CLIENT_EMAIL` e `FIREBASE_PRIVATE_KEY` com os dados da conta de serviço do Firebase. Na chave privada, mantenha as quebras de linha como `\n`. Configure `PUBLIC_APP_URL` com a origem pública do frontend (sem `/api`); em produção, configure essa variável também nas variáveis de ambiente do projeto da Vercel.
+
+Este repositório inclui `vercel.json` para publicar o servidor Express como função da Vercel. Para que a API hospedada gere QR Codes e consulte o histórico, o projeto da Vercel precisa estar conectado a este repositório (`AlexCMoreira10/backend_v6`) e usar um deploy que inclua o serviço de QR Code. Configure `FIREBASE_PROJECT_ID`, `FIREBASE_CLIENT_EMAIL`, `FIREBASE_PRIVATE_KEY` e `PUBLIC_APP_URL` nas variáveis de ambiente da Vercel e faça um novo deploy. `PUBLIC_APP_URL` deve ser a URL HTTPS do frontend, não a URL da API.
 
 ## 1. Visão geral
 
@@ -258,7 +260,7 @@ O QR Code precisa abrir uma página do frontend, não diretamente a resposta JSO
 PUBLIC_APP_URL=http://localhost:5173
 ```
 
-Com essa configuração, o QR leva para `http://localhost:5173/livros/rastreio/{token}`. A página do frontend lê o `token` da URL e consulta a API em `GET http://localhost:3000/api/livros/rastreio/{token}`. Em produção, use o domínio HTTPS do frontend.
+Com essa configuração, o QR leva para `http://localhost:5173/livros/rastreio/{token}`. A página do frontend lê o `token` da URL e consulta a API em `GET http://localhost:3000/api/livros/rastreio/{token}`. Em produção, use o domínio HTTPS do frontend para `PUBLIC_APP_URL` e configure o frontend para consultar a URL da API publicada.
 
 Crie um helper para enviar o ID token do Firebase nas rotas protegidas:
 
