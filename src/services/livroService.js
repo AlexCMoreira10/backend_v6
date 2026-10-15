@@ -3,7 +3,18 @@ import { db } from '../config/firebase.js';
 const collection = db.collection('livros');
 
 export const criarLivro = async (dados) => {
-  const docRef = await collection.add(dados);
+  const docRef = collection.doc();
+  const historicoRef = docRef.collection('historicoPosse').doc();
+
+  await db.runTransaction(async (transaction) => {
+    transaction.set(docRef, dados);
+    transaction.set(historicoRef, {
+      usuarioId: dados.usuarioId,
+      nome: dados.usuarioNome,
+      tipoNegociacao: 'cadastro',
+      dataInicio: dados.criadoEm
+    });
+  });
 
   return {
     id: docRef.id,
@@ -41,10 +52,14 @@ export const listarLivros = async (filtros) => {
 
   const snapshot = await query.get();
 
-  let livros = snapshot.docs.map(doc => ({
-    id: doc.id,
-    ...doc.data()
-  }));
+  let livros = snapshot.docs.map(doc => {
+    const dados = doc.data();
+    delete dados.qrToken;
+    delete dados.transferenciaPendente;
+    return { id: doc.id, ...dados };
+  }).filter(livro =>
+    livro.status !== 'na_estante' && livro.estadoAcervo !== 'roubado'
+  );
 
   // 🔎 Busca parcial por título (Node)
   if (filtros.titulo) {
@@ -89,11 +104,6 @@ export const atualizarLivro = async (id, dadosAtualizados) => {
 
   return { id, ...dadosAtualizados };
 };
-
-export const deletarLivro = async (id) => {
-  await collection.doc(id).delete();
-};
-
 
 export const listarLivrosPorUsuario = async (usuarioId, filtros) => {
   let query = collection.where('usuarioId', '==', usuarioId);

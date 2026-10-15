@@ -1,14 +1,19 @@
+import { randomBytes } from 'node:crypto';
 import { 
     criarLivro, 
     listarLivros,
     buscarLivroPorId,
     atualizarLivro,
-    deletarLivro,
     listarLivrosPorUsuario
 } from '../services/livroService.js';
+import { criarUrlRastreio, gerarQrCode } from '../services/qrCodeService.js';
 
 export const criarLivroController = async (req, res) => {
   try {
+    if (!req.body || typeof req.body !== 'object' || Array.isArray(req.body)) {
+      return res.status(400).json({ erro: 'O body deve ser um objeto JSON' });
+    }
+
     const {
       titulo,
       autor,
@@ -58,6 +63,9 @@ export const criarLivroController = async (req, res) => {
     }
 
     const usuarioId = req.usuario.uid;
+    const qrToken = randomBytes(24).toString('base64url');
+    const qrUrl = criarUrlRastreio(qrToken);
+    const qrCode = await gerarQrCode(qrUrl);
 
     const novoLivro = {
       titulo,
@@ -69,18 +77,23 @@ export const criarLivroController = async (req, res) => {
       idioma: idioma || '',
       condicao: condicao || 'bom',
       tipo,
-      preco: preco || null,
+      preco: preco ?? null,
       trocas: trocas || {},
       fotos: fotos || [],
       localizacao: localizacao || '',
       usuarioId,
+      usuarioNome: req.usuario.name || '',
       status: 'disponivel',
+      estadoAcervo: 'normal',
+      qrToken,
+      qrUrl,
       criadoEm: new Date()
     };
 
     const resultado = await criarLivro(novoLivro);
-
-    return res.status(201).json(resultado);
+    const resposta = { ...resultado, qrCode };
+    delete resposta.qrToken;
+    return res.status(201).json(resposta);
 
   } catch (error) {
     console.error(error);
@@ -103,6 +116,10 @@ export const listarLivrosController = async (req, res) => {
         });
       }
 
+      delete livro.qrToken;
+      if (livro.usuarioId !== req.usuario.uid) {
+        delete livro.transferenciaPendente;
+      }
       return res.json(livro);
     }
 
@@ -122,7 +139,42 @@ export const listarLivrosController = async (req, res) => {
 export const atualizarLivroController = async (req, res) => {
   try {
     const { id } = req.params;
-    const dados = req.body;
+    const camposEditaveis = [
+      'titulo',
+      'autor',
+      'descricao',
+      'editora',
+      'anoPublicacao',
+      'generos',
+      'idioma',
+      'condicao',
+      'tipo',
+      'preco',
+      'trocas',
+      'fotos',
+      'localizacao',
+      'status'
+    ];
+    const body = req.body;
+
+    if (!body || typeof body !== 'object' || Array.isArray(body)) {
+      return res.status(400).json({ erro: 'O body deve ser um objeto JSON' });
+    }
+
+    const camposInvalidos = Object.keys(body).filter(
+      (campo) => !camposEditaveis.includes(campo)
+    );
+    if (camposInvalidos.length) {
+      return res.status(400).json({
+        erro: `Campos não editáveis: ${camposInvalidos.join(', ')}`
+      });
+    }
+    const dados = Object.fromEntries(
+      Object.entries(body).filter(([campo]) => camposEditaveis.includes(campo))
+    );
+    if (Object.keys(dados).length === 0) {
+      return res.status(400).json({ erro: 'Informe ao menos um campo válido para atualizar' });
+    }
 
     // 🔍 Verifica se existe
     const livro = await buscarLivroPorId(id);
@@ -137,6 +189,11 @@ export const atualizarLivroController = async (req, res) => {
     if (livro.usuarioId !== req.usuario.uid) {
       return res.status(403).json({
         erro: 'Você não tem permissão para editar este livro'
+      });
+    }
+    if (livro.transferenciaPendente) {
+      return res.status(409).json({
+        erro: 'Conclua ou recuse a aquisição pendente antes de editar este livro'
       });
     }
 
@@ -155,22 +212,28 @@ export const atualizarLivroController = async (req, res) => {
       });
     }
 
-    // 🔥 Regra de preço
-    if (dados.tipo === 'venda' && dados.preco == null) {
+    const statusValidos = ['disponivel', 'reservado', 'trocado', 'vendido', 'na_estante'];
+    if (dados.status && !statusValidos.includes(dados.status)) {
+      return res.status(400).json({ erro: 'Status inválido' });
+    }
+
+    const tipoFinal = dados.tipo ?? livro.tipo;
+    const precoFinal = Object.hasOwn(dados, 'preco') ? dados.preco : livro.preco;
+    if (tipoFinal === 'venda' && precoFinal == null) {
       return res.status(400).json({
         erro: 'Preço obrigatório para venda'
       });
     }
 
-    if ((dados.tipo === 'doacao' || dados.tipo === 'troca') && dados.preco != null) {
-      return res.status(400).json({
-        erro: 'Preço não permitido para doação/troca'
-      });
+    if ((tipoFinal === 'doacao' || tipoFinal === 'troca') && precoFinal != null) {
+      if (!Object.hasOwn(dados, 'preco')) {
+        dados.preco = null;
+      } else {
+        return res.status(400).json({
+          erro: 'Preço não permitido para doação/troca'
+        });
+      }
     }
-
-    // 🧹 Remove campos proibidos
-    delete dados.usuarioId;
-    delete dados.criadoEm;
 
     // 🧱 Atualiza
     const resultado = await atualizarLivro(id, dados);
@@ -205,11 +268,9 @@ export const deletarLivroController = async (req, res) => {
       });
     }
 
-    // 🗑️ Deleta
-    await deletarLivro(id);
-
-    // ✅ Resposta padrão REST
-    return res.status(204).send();
+    return res.status(405).json({
+      erro: 'Livros cadastrados não podem ser excluídos; marque o estado do livro na estante'
+    });
 
   } catch (error) {
     console.error(error);

@@ -2,7 +2,7 @@
 
 ## Configuração do Firebase
 
-Crie um arquivo `.env` na raiz usando `.env.example` como referência e preencha `FIREBASE_PROJECT_ID`, `FIREBASE_CLIENT_EMAIL` e `FIREBASE_PRIVATE_KEY` com os dados da conta de serviço do Firebase. Na chave privada, mantenha as quebras de linha como `\n`.
+Crie um arquivo `.env` na raiz usando `.env.example` como referência e preencha `FIREBASE_PROJECT_ID`, `FIREBASE_CLIENT_EMAIL` e `FIREBASE_PRIVATE_KEY` com os dados da conta de serviço do Firebase. Na chave privada, mantenha as quebras de linha como `\n`. Configure `PUBLIC_APP_URL` com a URL pública usada pelo QR Code (em produção, a URL base pública da aplicação).
 
 ## 1. Visão geral
 
@@ -11,7 +11,7 @@ Crie um arquivo `.env` na raiz usando `.env.example` como referência e preencha
 
 ### 🔐 Autenticação
 
-- Todas as rotas exigem autenticação via Firebase, exceto o cadastro de usuário.
+- Todas as rotas exigem autenticação via Firebase, exceto o cadastro de usuário e a consulta pública do histórico pelo QR Code.
 - Cabeçalho obrigatório em todas as requisições protegidas:
   - Authorization: Bearer {{token}}
 - O `token` deve ser obtido após o login no Firebase. Após o cadastro por e-mail e senha, o front deve autenticar o usuário no Firebase e usar o ID token retornado nas rotas protegidas.
@@ -163,7 +163,8 @@ Exemplo de body válido:
   - `tipo` deve ser um de: `doacao`, `troca`, `venda`
   - `preco` é obrigatório se `tipo` for `venda`
   - `preco` não é permitido se `tipo` for `doacao` ou `troca`
-  - `usuarioId` obrigatório
+  - o proprietário é identificado pelo token; `usuarioId` não deve ser enviado
+- O servidor cria o QR Code automaticamente. A resposta inclui `qrUrl` e `qrCode` (Data URI PNG). O QR aponta para `{PUBLIC_APP_URL}/livros/rastreio/{token}` e esse destino deve ser ligado à tela de leitura do frontend.
 
 ### 3.4 Buscar livro por ID
 
@@ -202,10 +203,116 @@ Exemplo de body de atualização:
 - Endpoint: `{{baseUrl}}/api/livros/:id`
 - Exemplo: `DELETE http://localhost:3000/api/livros/abc123`
 - Resposta:
-  - `204 No Content` em caso de sucesso
+  - `405 Method Not Allowed`: livros cadastrados não podem ser excluídos
   - `404 Not Found` se não existir
 
-### 3.7 Buscar por título
+### 3.7 Rastreio, aquisição e estante
+
+#### Consultar o histórico pelo QR Code
+
+- Método: `GET`
+- Endpoint: `{{baseUrl}}/api/livros/rastreio/:token`
+- Autenticação: não exige token.
+- Retorna os dados públicos do livro, o histórico de posse, as negociações concluídas e as avaliações.
+
+#### Solicitar aquisição após ler o QR Code
+
+- Método: `POST`
+- Endpoint: `{{baseUrl}}/api/livros/rastreio/:token/aquisicao`
+- Autenticação: exige token.
+- Body:
+
+```json
+{
+  "tipoNegociacao": "doacao"
+}
+```
+
+- `tipoNegociacao` aceita `doacao`, `troca` ou `venda`.
+- O pedido fica pendente até o proprietário atual confirmar; nesse momento a posse é transferida e a data/tipo da negociação são registrados.
+- `POST {{baseUrl}}/api/livros/:id/aquisicoes/confirmar` confirma como proprietário atual.
+- `POST {{baseUrl}}/api/livros/:id/aquisicoes/recusar` recusa como proprietário atual.
+- A resposta do rastreio inclui o `id` do livro, usado nas rotas de confirmação.
+
+#### Avaliar um livro
+
+- Método: `POST`
+- Endpoint: `{{baseUrl}}/api/livros/:id/avaliacoes`
+- Autenticação: exige token.
+- Body: `{ "comentario": "..." }` (de 1 a 2000 caracteres).
+- Somente usuários registrados no histórico de posse podem comentar; cada usuário pode avaliar uma vez por livro.
+
+#### Consultar e atualizar a estante
+
+- `GET {{baseUrl}}/api/me/estante` lista os livros atualmente pertencentes ao usuário autenticado. Aceita `page`, `limit`, `titulo` e `estadoAcervo`.
+- `PUT {{baseUrl}}/api/me/estante/:id/estado` marca um livro próprio como roubado ou danificado. Body: `{ "estadoAcervo": "roubado" }` ou `{ "estadoAcervo": "danificado" }`.
+- `GET {{baseUrl}}/api/livros/:id/qrcode` retorna o QR Code e sua URL ao proprietário atual.
+- Livros marcados como roubados não podem ser adquiridos e não aparecem nos resultados de anúncios.
+
+#### Guia de integração no frontend
+
+O QR Code precisa abrir uma página do frontend, não diretamente a resposta JSON da API. Configure `PUBLIC_APP_URL` no backend com a origem pública do frontend, sem `/api`. Por exemplo:
+
+```env
+# Backend .env
+PUBLIC_APP_URL=http://localhost:5173
+```
+
+Com essa configuração, o QR leva para `http://localhost:5173/livros/rastreio/{token}`. A página do frontend lê o `token` da URL e consulta a API em `GET http://localhost:3000/api/livros/rastreio/{token}`. Em produção, use o domínio HTTPS do frontend.
+
+Crie um helper para enviar o ID token do Firebase nas rotas protegidas:
+
+```js
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:3000/api';
+
+async function apiFetch(path, { firebaseUser, ...options } = {}) {
+  const idToken = firebaseUser ? await firebaseUser.getIdToken() : null;
+  const response = await fetch(`${API_URL}${path}`, {
+    ...options,
+    headers: {
+      ...(options.body ? { 'Content-Type': 'application/json' } : {}),
+      ...(idToken ? { Authorization: `Bearer ${idToken}` } : {}),
+      ...options.headers
+    }
+  });
+
+  const body = response.status === 204 ? null : await response.json();
+  if (!response.ok) {
+    throw new Error(body?.erro || `Erro HTTP ${response.status}`);
+  }
+  return body;
+}
+```
+
+Ao cadastrar o livro, use `POST /livros` e mostre o QR retornado, por exemplo com `<img src={livro.qrCode} alt="QR Code para rastrear o livro" />`. `qrCode` é uma Data URI PNG e `qrUrl` contém o endereço que pode ser compartilhado. Para livros antigos, obtenha o código com `GET /livros/:id/qrcode`.
+
+Implemente a tela/rota `/livros/rastreio/:token` nesta ordem:
+
+1. Leia o token dos parâmetros da rota e consulte `GET /livros/rastreio/:token` sem exigir login. Apresente os dados de `livro`, `historicoPosse`, `historicoNegociacoes` e `avaliacoes`.
+2. Mostre a ação “Adquiri este livro”. Se a pessoa ainda não estiver autenticada, peça login; depois solicite o tipo de negociação e envie `POST /livros/rastreio/:token/aquisicao` com `{ "tipoNegociacao": "doacao" }` (ou `troca`/`venda`) e o token Firebase no cabeçalho.
+3. Informe que o pedido aguarda confirmação do proprietário. Não mova o livro para a estante no frontend enquanto o pedido estiver pendente: a transferência só é concluída após a confirmação do dono.
+
+O dono pode consultar pedidos pendentes nos livros que possui (`GET /me/livros`; o campo `transferenciaPendente` vem no livro) e apresentar ações para:
+
+```js
+await apiFetch(`/livros/${livroId}/aquisicoes/confirmar`, {
+  method: 'POST',
+  firebaseUser
+});
+// Ou, para recusar:
+await apiFetch(`/livros/${livroId}/aquisicoes/recusar`, {
+  method: 'POST',
+  firebaseUser
+});
+```
+
+Após confirmar, atualize a tela e a estante. A estante é carregada com `GET /me/estante`; para marcar um livro como roubado ou danificado, envie `PUT /me/estante/:id/estado` com `{ "estadoAcervo": "roubado" }` ou `{ "estadoAcervo": "danificado" }`. O backend não permite excluir livros.
+
+Na página do histórico, mostre o formulário de comentário apenas para pessoas autenticadas que tenham tido a posse do livro; o backend valida essa regra e aceita um comentário por usuário. Envie `POST /livros/:id/avaliacoes` com `{ "comentario": "..." }`. Se o servidor responder `401`, peça para entrar novamente; exiba as mensagens de `400`, `403` e `409` para orientar o usuário (por exemplo, pedido pendente, aquisição já feita ou tentativa de comentar sem ter possuído o livro).
+
+Para leitura dentro do aplicativo, integre uma biblioteca de scanner compatível com a plataforma e navegue para o endereço encontrado no QR. A mesma rota `/livros/rastreio/:token` atende tanto quem abre o QR pela câmera do celular quanto quem usa o scanner do próprio aplicativo. Solicite permissão de câmera somente após ação explícita do usuário e mantenha também uma opção para abrir/digitar o link.
+
+### 3.8 Buscar por título
 
 - Método: `GET`
 - Endpoint: `{{baseUrl}}/api/livros/busca/titulo`
@@ -216,7 +323,7 @@ Exemplo de body de atualização:
   - agora a busca encontra o termo em qualquer posição do título
   - por exemplo, `pequeno` encontra `O Pequeno Príncipe`
 
-### 3.8 Busca avançada combinando filtros
+### 3.9 Busca avançada combinando filtros
 
 - Método: `GET`
 - Endpoint: `{{baseUrl}}/api/livros/busca/avancada`
@@ -233,7 +340,7 @@ Exemplos:
   - `GET http://localhost:3000/api/livros/busca/avancada?titulo=pequeno&genero=fantasia`
   - `GET http://localhost:3000/api/livros/busca/avancada?genero=infantil&tipo=doacao`
 
-### 3.9 Buscar por gênero
+### 3.10 Buscar por gênero
 
 - Método: `GET`
 - Endpoint: `{{baseUrl}}/api/livros/busca/genero`
@@ -241,7 +348,7 @@ Exemplos:
 - Exemplo:
   - `GET http://localhost:3000/api/livros/busca/genero?genero=fantasia`
 
-### 3.10 Buscar por editora
+### 3.11 Buscar por editora
 
 - Método: `GET`
 - Endpoint: `{{baseUrl}}/api/livros/busca/editora`
@@ -249,7 +356,7 @@ Exemplos:
 - Exemplo:
   - `GET http://localhost:3000/api/livros/busca/editora?editora=agir`
 
-### 3.11 Buscar por autor
+### 3.12 Buscar por autor
 
 - Método: `GET`
 - Endpoint: `{{baseUrl}}/api/livros/busca/autor`
@@ -257,7 +364,7 @@ Exemplos:
 - Exemplo:
   - `GET http://localhost:3000/api/livros/busca/autor?autor=antoine`
 
-### 3.12 Filtrar por tipo de livro
+### 3.13 Filtrar por tipo de livro
 
 - Método: `GET`
 - Endpoint: `{{baseUrl}}/api/livros/filtro/tipo`
@@ -270,7 +377,7 @@ Exemplos:
   - retorna livros de doação quando `true`
   - retorna livros de troca/venda quando `false`
 
-### 3.13 Notificações
+### 3.14 Notificações
 
 #### Listar notificações do usuário
 
@@ -296,7 +403,7 @@ Exemplos:
   - `200 OK` com `{ mensagem: 'Notificação marcada como lida' }`
   - `401 Unauthorized` se o token estiver ausente ou inválido
 
-### 3.14 Mensagens
+### 3.15 Mensagens
 
 > **Status:** o envio, o histórico, a listagem de conversas e a marcação de leitura estão implementados.
 

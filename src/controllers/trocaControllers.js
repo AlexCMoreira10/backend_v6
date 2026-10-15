@@ -1,5 +1,11 @@
-import { criarTroca, listarTrocasPorUsuario  } from '../services/trocaService.js';
-import { buscarLivroPorId, atualizarLivro } from '../services/livroService.js';
+import {
+  criarTroca,
+  listarTrocasPorUsuario,
+  concluirTroca,
+  buscarTrocaPorId,
+  atualizarTroca
+} from '../services/trocaService.js';
+import { buscarLivroPorId } from '../services/livroService.js';
 import { criarNotificacao } from '../services/notificacaoService.js';
 
 export const solicitarTrocaController = async (req, res) => {
@@ -80,31 +86,7 @@ export const aceitarTrocaController = async (req, res) => {
     const { id } = req.params;
     const usuarioId = req.usuario.uid;
 
-    const troca = await buscarTrocaPorId(id);
-
-    if (!troca) {
-      return res.status(404).json({ erro: 'Troca não encontrada' });
-    }
-
-    // 🔐 só destinatário pode aceitar
-    if (troca.destinatarioId !== usuarioId) {
-      return res.status(403).json({
-        erro: 'Sem permissão'
-      });
-    }
-
-    if (troca.status !== 'pendente') {
-      return res.status(400).json({
-        erro: 'Troca já finalizada'
-      });
-    }
-
-    // 🔄 Atualiza troca
-    await atualizarTroca(id, { status: 'aceita' });
-
-    // 🔥 Atualiza livros
-    await atualizarLivro(troca.livroOfertadoId, { status: 'trocado' });
-    await atualizarLivro(troca.livroDesejadoId, { status: 'trocado' });
+    const troca = await concluirTroca(id, usuarioId);
 
     await criarNotificacao({
       usuarioId: troca.solicitanteId,
@@ -114,9 +96,12 @@ export const aceitarTrocaController = async (req, res) => {
       criadoEm: new Date()
     });
 
-    return res.json({ mensagem: 'Troca realizada com sucesso' });
+    return res.json({ mensagem: 'Troca realizada com sucesso', ...troca });
 
   } catch (error) {
+    if (error.status) {
+      return res.status(error.status).json({ erro: error.message });
+    }
     console.error(error);
     return res.status(500).json({
       erro: 'Erro ao aceitar troca'
@@ -160,6 +145,9 @@ export const recusarTrocaController = async (req, res) => {
     return res.json({ mensagem: 'Troca recusada' });
 
   } catch (error) {
+    if (error.status) {
+      return res.status(error.status).json({ erro: error.message });
+    }
     console.error(error);
     return res.status(500).json({
       erro: 'Erro ao recusar troca'
