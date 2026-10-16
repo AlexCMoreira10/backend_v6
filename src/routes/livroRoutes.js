@@ -5,13 +5,13 @@ import {
   listarLivrosController,
   atualizarLivroController,
   deletarLivroController,
-  listarMeusLivrosController
+  listarMeusLivrosController,
+  listarEstanteController
 } from '../controllers/livroController.js';
 import {
   atualizarEstadoAcervoController,
   buscarRastreioController,
   confirmarAquisicaoController,
-  listarEstanteController,
   obterQrCodeController,
   recusarAquisicaoController,
   registrarAvaliacaoController,
@@ -25,7 +25,7 @@ router.post('/livros/rastreio/:token/aquisicao', verificarToken, solicitarAquisi
 router.get('/me/estante', verificarToken, listarEstanteController);
 router.put('/me/estante/:id/estado', verificarToken, atualizarEstadoAcervoController);
 router.post('/livros', verificarToken, criarLivroController);
-router.get('/livros', verificarToken, listarLivrosController);
+router.get('/livros', listarLivrosController);
 router.get('/livros/:id', verificarToken, listarLivrosController); // Detalhes do livro por ID (reutiliza o mesmo controller)
 router.get('/livros/:id/qrcode', verificarToken, obterQrCodeController);
 router.post('/livros/:id/avaliacoes', verificarToken, registrarAvaliacaoController);

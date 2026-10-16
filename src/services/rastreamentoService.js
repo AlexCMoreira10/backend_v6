@@ -1,6 +1,7 @@
 import { randomBytes } from 'node:crypto';
 import { db } from '../config/firebase.js';
 import { criarUrlRastreio } from './qrCodeService.js';
+import { estante, formatarItemEstante } from './estanteService.js';
 
 const livros = db.collection('livros');
 const notificacoes = db.collection('notificacoes');
@@ -132,6 +133,7 @@ export const solicitarAquisicao = async (livroId, usuarioId, usuarioNome, tipoNe
 
 export const confirmarAquisicao = async (livroId, proprietarioId) => {
   const ref = livros.doc(livroId);
+  const estanteRef = estante.doc(livroId);
   const posseRef = ref.collection('historicoPosse').doc();
   const negociacaoRef = ref.collection('historicoNegociacoes').doc();
   const dataConcluida = new Date();
@@ -176,6 +178,13 @@ export const confirmarAquisicao = async (livroId, proprietarioId) => {
       status: 'na_estante',
       transferenciaPendente: null
     });
+    transaction.set(estanteRef, formatarItemEstante(livroId, {
+      ...livro,
+      usuarioId: transferencia.solicitanteId,
+      usuarioNome: transferencia.solicitanteNome,
+      status: 'na_estante',
+      transferenciaPendente: null
+    }));
     transaction.set(posseRef, {
       usuarioId: transferencia.solicitanteId,
       nome: transferencia.solicitanteNome,
@@ -270,10 +279,14 @@ export const marcarEstadoAcervo = async (livroId, usuarioId, estado) => {
   }
 
   const ref = livros.doc(livroId);
+  const estanteRef = estante.doc(livroId);
   const atualizadoEm = new Date();
 
   return db.runTransaction(async (transaction) => {
-    const snapshot = await transaction.get(ref);
+    const [snapshot, estanteSnapshot] = await Promise.all([
+      transaction.get(ref),
+      transaction.get(estanteRef)
+    ]);
     if (!snapshot.exists) falhar(404, 'Livro não encontrado');
 
     const livro = snapshot.data();
@@ -289,6 +302,16 @@ export const marcarEstadoAcervo = async (livroId, usuarioId, estado) => {
       estadoAcervoAtualizadoEm: atualizadoEm,
       ...(estado === 'roubado' ? { transferenciaPendente: null } : {})
     });
+    const itemEstante = formatarItemEstante(livroId, {
+      ...livro,
+      estadoAcervo: estado,
+      estadoAcervoAtualizadoEm: atualizadoEm,
+      ...(estado === 'roubado' ? { transferenciaPendente: null } : {})
+    });
+    transaction.set(
+      estanteRef,
+      estanteSnapshot.exists ? { ...estanteSnapshot.data(), ...itemEstante } : itemEstante
+    );
     if (estado === 'roubado' && livro.transferenciaPendente) {
       transaction.set(notificacoes.doc(), {
         usuarioId: livro.transferenciaPendente.solicitanteId,
@@ -321,32 +344,6 @@ export const garantirQrCodeLivro = async (livroId) => {
   });
 };
 
-export const listarEstantePorUsuario = async (usuarioId, filtros) => {
-  const snapshot = await livros.where('usuarioId', '==', usuarioId).get();
-  let dados = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
-
-  if (filtros.estadoAcervo) {
-    dados = dados.filter((livro) => livro.estadoAcervo === filtros.estadoAcervo);
-  }
-  if (filtros.titulo) {
-    const termo = String(filtros.titulo).toLowerCase();
-    dados = dados.filter((livro) => livro.titulo?.toLowerCase().includes(termo));
-  }
-
-  dados.sort((a, b) => paraData(b.criadoEm).getTime() - paraData(a.criadoEm).getTime());
-  const page = Math.max(Number.parseInt(filtros.page, 10) || 1, 1);
-  const limit = Math.min(Math.max(Number.parseInt(filtros.limit, 10) || 10, 1), 100);
-  const start = (page - 1) * limit;
-
-  return {
-    total: dados.length,
-    page,
-    limit,
-    totalPaginas: Math.ceil(dados.length / limit),
-    dados: dados.slice(start, start + limit)
-  };
-};
-
 export const registrarTransferenciaEmTransacao = (
   transaction,
   livroRef,
@@ -361,6 +358,7 @@ export const registrarTransferenciaEmTransacao = (
 ) => {
   const historicoRef = livroRef.collection('historicoPosse').doc();
   const negociacaoRef = livroRef.collection('historicoNegociacoes').doc();
+  const estanteRef = estante.doc(livroRef.id);
   const qrToken = livro.qrToken || novoTokenQr();
   const qrUrl = livro.qrUrl || criarUrlRastreio(qrToken);
   const negociacao = {
@@ -380,6 +378,15 @@ export const registrarTransferenciaEmTransacao = (
     qrToken,
     qrUrl
   });
+  transaction.set(estanteRef, formatarItemEstante(livroRef.id, {
+    ...livro,
+    usuarioId: novoProprietarioId,
+    usuarioNome: novoProprietarioNome,
+    status: 'na_estante',
+    transferenciaPendente: null,
+    qrToken,
+    qrUrl
+  }));
   transaction.set(historicoRef, {
     usuarioId: novoProprietarioId,
     nome: novoProprietarioNome,

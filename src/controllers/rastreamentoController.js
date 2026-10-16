@@ -2,7 +2,6 @@ import {
   buscarRastreioPorToken,
   confirmarAquisicao,
   garantirQrCodeLivro,
-  listarEstantePorUsuario,
   marcarEstadoAcervo,
   recusarAquisicao,
   registrarAvaliacao,
@@ -105,15 +104,6 @@ export const atualizarEstadoAcervoController = async (req, res) => {
     return res.json(resultado);
   } catch (error) {
     return responderErro(res, error, 'Erro ao atualizar o estado do livro');
-  }
-};
-
-export const listarEstanteController = async (req, res) => {
-  try {
-    const resultado = await listarEstantePorUsuario(req.usuario.uid, req.query);
-    return res.json(resultado);
-  } catch (error) {
-    return responderErro(res, error, 'Erro ao listar a estante');
   }
 };
 

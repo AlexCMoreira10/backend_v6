@@ -13,7 +13,7 @@ Este repositório inclui `vercel.json` para publicar o servidor Express como fun
 
 ### 🔐 Autenticação
 
-- Todas as rotas exigem autenticação via Firebase, exceto o cadastro de usuário e a consulta pública do histórico pelo QR Code.
+- As rotas exigem autenticação via Firebase, exceto o cadastro de usuário, a listagem pública de livros (`GET /livros`) e a consulta pública do histórico pelo QR Code.
 - Cabeçalho obrigatório em todas as requisições protegidas:
   - Authorization: Bearer {{token}}
 - O `token` deve ser obtido após o login no Firebase. Após o cadastro por e-mail e senha, o front deve autenticar o usuário no Firebase e usar o ID token retornado nas rotas protegidas.
@@ -118,11 +118,14 @@ Exemplo de body:
 
 - Método: `GET`
 - Endpoint: `{{baseUrl}}/api/livros`
+- Autenticação: não exige token.
+- Descrição: retorna livros públicos do catálogo; aceita paginação e filtros por query string.
 
 ### 3.2 Listar todos os livros
 
 - Método: `GET`
 - Endpoint: `{{baseUrl}}/api/livros`
+- Autenticação: não exige token.
 - Resposta: `200 OK`
 - Exemplo de uso:
   - Request: `GET http://localhost:3000/api/livros?page=1&limit=10&titulo=pequeno`
@@ -167,6 +170,7 @@ Exemplo de body válido:
   - `preco` não é permitido se `tipo` for `doacao` ou `troca`
   - o proprietário é identificado pelo token; `usuarioId` não deve ser enviado
 - O servidor cria o QR Code automaticamente. A resposta inclui `qrUrl` e `qrCode` (Data URI PNG). O QR abre `{PUBLIC_APP_URL}/html/rastreio.html?token={token}`, onde o usuário pode solicitar a negociação.
+- A publicação grava o livro em `livros` e cria, na mesma transação, um registro em `estante` para o proprietário atual.
 
 ### 3.4 Buscar livro por ID
 
@@ -199,14 +203,17 @@ Exemplo de body de atualização:
   - `tipo`, `condicao` e `status` devem respeitar os valores permitidos
   - `preco` só pode ser enviado se `tipo` for `venda`
 
-### 3.6 Deletar livro
+### 3.6 Remover anúncio
 
 - Método: `DELETE`
 - Endpoint: `{{baseUrl}}/api/livros/:id`
 - Exemplo: `DELETE http://localhost:3000/api/livros/abc123`
+- Ação: retira o anúncio do catálogo público e mantém o livro na estante do proprietário. Não apaga o histórico nem os dados do livro.
 - Resposta:
-  - `405 Method Not Allowed`: livros cadastrados não podem ser excluídos
+  - `200 OK` se o anúncio for retirado
   - `404 Not Found` se não existir
+  - `403 Forbidden` se o usuário não for o proprietário atual
+  - `409 Conflict` se houver uma aquisição pendente ou o livro não tiver um anúncio ativo
 
 ### 3.7 Rastreio, aquisição e estante
 
@@ -246,7 +253,7 @@ Exemplo de body de atualização:
 
 #### Consultar e atualizar a estante
 
-- `GET {{baseUrl}}/api/me/estante` lista os livros atualmente pertencentes ao usuário autenticado. Aceita `page`, `limit`, `titulo` e `estadoAcervo`.
+- `GET {{baseUrl}}/api/me/estante` lista os livros atualmente pertencentes ao usuário autenticado a partir da coleção `estante`. Aceita `page`, `limit`, `titulo` e `estadoAcervo`. Registros antigos são migrados para essa coleção na primeira consulta. A coleção é atualizada junto com os anúncios em alterações de dados, retirada do catálogo e transferências de propriedade.
 - `PUT {{baseUrl}}/api/me/estante/:id/estado` marca um livro próprio como roubado ou danificado. Body: `{ "estadoAcervo": "roubado" }` ou `{ "estadoAcervo": "danificado" }`.
 - `GET {{baseUrl}}/api/livros/:id/qrcode` retorna o QR Code e sua URL ao proprietário atual.
 - Livros marcados como roubados não podem ser adquiridos e não aparecem nos resultados de anúncios.
@@ -310,7 +317,7 @@ await apiFetch(`/livros/${livroId}/aquisicoes/recusar`, {
 });
 ```
 
-Após confirmar, atualize a tela e a estante. A estante é carregada com `GET /me/estante`; para marcar um livro como roubado ou danificado, envie `PUT /me/estante/:id/estado` com `{ "estadoAcervo": "roubado" }` ou `{ "estadoAcervo": "danificado" }`. O backend não permite excluir livros.
+Após confirmar, atualize a tela e a estante. A estante é carregada com `GET /me/estante`; para marcar um livro como roubado ou danificado, envie `PUT /me/estante/:id/estado` com `{ "estadoAcervo": "roubado" }` ou `{ "estadoAcervo": "danificado" }`. `DELETE /livros/:id` retira apenas um anúncio ativo do catálogo e preserva o livro na estante do proprietário.
 
 Na página do histórico, mostre o formulário de comentário apenas para pessoas autenticadas que tenham tido a posse do livro; o backend valida essa regra e aceita um comentário por usuário. Envie `POST /livros/:id/avaliacoes` com `{ "comentario": "..." }`. Se o servidor responder `401`, peça para entrar novamente; exiba as mensagens de `400`, `403` e `409` para orientar o usuário (por exemplo, pedido pendente, aquisição já feita ou tentativa de comentar sem ter possuído o livro).
 

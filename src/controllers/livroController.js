@@ -4,7 +4,9 @@ import {
     listarLivros,
     buscarLivroPorId,
     atualizarLivro,
-    listarLivrosPorUsuario
+    listarLivrosPorUsuario,
+    listarEstantePorUsuario,
+    retirarAnuncio
 } from '../services/livroService.js';
 import { criarUrlRastreio, gerarQrCode } from '../services/qrCodeService.js';
 
@@ -236,11 +238,14 @@ export const atualizarLivroController = async (req, res) => {
     }
 
     // 🧱 Atualiza
-    const resultado = await atualizarLivro(id, dados);
+    const resultado = await atualizarLivro(id, dados, req.usuario.uid);
 
     return res.json(resultado);
 
   } catch (error) {
+    if (error.status) {
+      return res.status(error.status).json({ erro: error.message });
+    }
     console.error(error);
     return res.status(500).json({
       erro: 'Erro ao atualizar livro'
@@ -250,29 +255,16 @@ export const atualizarLivroController = async (req, res) => {
 
 export const deletarLivroController = async (req, res) => {
   try {
-    const { id } = req.params;
-
-    // 🔍 Verifica se existe
-    const livro = await buscarLivroPorId(id);
-
-    if (!livro) {
-      return res.status(404).json({
-        erro: 'Livro não encontrado'
-      });
-    }
-
-    // 🔐 Segurança: só dono pode deletar
-    if (livro.usuarioId !== req.usuario.uid) {
-      return res.status(403).json({
-        erro: 'Você não tem permissão para deletar este livro'
-      });
-    }
-
-    return res.status(405).json({
-      erro: 'Livros cadastrados não podem ser excluídos; marque o estado do livro na estante'
+    const resultado = await retirarAnuncio(req.params.id, req.usuario.uid);
+    return res.json({
+      mensagem: 'Anúncio removido do catálogo; o livro continua na sua estante',
+      ...resultado
     });
 
   } catch (error) {
+    if (error.status) {
+      return res.status(error.status).json({ erro: error.message });
+    }
     console.error(error);
     return res.status(500).json({
       erro: 'Erro ao deletar livro'
@@ -293,6 +285,18 @@ export const listarMeusLivrosController = async (req, res) => {
     console.error(error);
     return res.status(500).json({
       erro: 'Erro ao listar livros do usuário'
+    });
+  }
+};
+
+export const listarEstanteController = async (req, res) => {
+  try {
+    const resultado = await listarEstantePorUsuario(req.usuario.uid, req.query);
+    return res.json(resultado);
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({
+      erro: 'Erro ao listar a estante'
     });
   }
 };
