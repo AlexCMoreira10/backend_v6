@@ -166,7 +166,7 @@ Exemplo de body válido:
   - `preco` é obrigatório se `tipo` for `venda`
   - `preco` não é permitido se `tipo` for `doacao` ou `troca`
   - o proprietário é identificado pelo token; `usuarioId` não deve ser enviado
-- O servidor cria o QR Code automaticamente. A resposta inclui `qrUrl` e `qrCode` (Data URI PNG). O QR aponta para `{PUBLIC_APP_URL}/livros/rastreio/{token}` e esse destino deve ser ligado à tela de leitura do frontend.
+- O servidor cria o QR Code automaticamente. A resposta inclui `qrUrl` e `qrCode` (Data URI PNG). O QR abre `{PUBLIC_APP_URL}/html/rastreio.html?token={token}`, onde o usuário pode solicitar a negociação.
 
 ### 3.4 Buscar livro por ID
 
@@ -260,7 +260,9 @@ O QR Code precisa abrir uma página do frontend, não diretamente a resposta JSO
 PUBLIC_APP_URL=http://localhost:5173
 ```
 
-Com essa configuração, o QR leva para `http://localhost:5173/livros/rastreio/{token}`. A página do frontend lê o `token` da URL e consulta a API em `GET http://localhost:3000/api/livros/rastreio/{token}`. Em produção, use o domínio HTTPS do frontend para `PUBLIC_APP_URL` e configure o frontend para consultar a URL da API publicada.
+Com essa configuração, o QR leva para `http://localhost:5173/html/rastreio.html?token={token}`. A tela apresenta o pedido de negociação e consulta a API em `GET http://localhost:3000/api/livros/rastreio/{token}`. Em produção, use o domínio HTTPS do frontend para `PUBLIC_APP_URL` e configure o frontend para consultar a URL da API publicada.
+
+Quando a pessoa confirma o pedido, o backend registra uma notificação para o proprietário atual. Ela aparece no perfil do vendedor, que pode confirmar ou recusar a solicitação na área de anúncios. Depois da confirmação, o solicitante recebe outra notificação e o livro entra na estante. A transferência não ocorre ao apenas escanear ou confirmar o pedido.
 
 Crie um helper para enviar o ID token do Firebase nas rotas protegidas:
 
@@ -290,9 +292,9 @@ Ao cadastrar o livro, use `POST /livros` e mostre o QR retornado, por exemplo co
 
 Implemente a tela/rota `/livros/rastreio/:token` nesta ordem:
 
-1. Leia o token dos parâmetros da rota e consulte `GET /livros/rastreio/:token` sem exigir login. Apresente os dados de `livro`, `historicoPosse`, `historicoNegociacoes` e `avaliacoes`.
-2. Mostre a ação “Adquiri este livro”. Se a pessoa ainda não estiver autenticada, peça login; depois solicite o tipo de negociação e envie `POST /livros/rastreio/:token/aquisicao` com `{ "tipoNegociacao": "doacao" }` (ou `troca`/`venda`) e o token Firebase no cabeçalho.
-3. Informe que o pedido aguarda confirmação do proprietário. Não mova o livro para a estante no frontend enquanto o pedido estiver pendente: a transferência só é concluída após a confirmação do dono.
+1. Leia o token da query string e consulte `GET /livros/rastreio/:token` sem exigir login. Apresente o livro e, se desejado, o histórico público.
+2. Ao carregar o QR, solicite confirmação da negociação. Se a pessoa ainda não estiver autenticada, peça login e retorne à tela do QR; envie `POST /livros/rastreio/:token/aquisicao` com `{ "tipoNegociacao": "doacao" }` (ou `troca`/`venda`) e o token Firebase no cabeçalho.
+3. Informe que o pedido aguarda confirmação do proprietário. O backend cria uma notificação para o vendedor e mantém o pedido pendente; não mova o livro para a estante enquanto o vendedor não confirmar.
 
 O dono pode consultar pedidos pendentes nos livros que possui (`GET /me/livros`; o campo `transferenciaPendente` vem no livro) e apresentar ações para:
 

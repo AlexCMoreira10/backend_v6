@@ -16,6 +16,11 @@ const novoTokenQr = () => randomBytes(24).toString('base64url');
 const paraData = (valor) => (
   valor && typeof valor.toDate === 'function' ? valor.toDate() : new Date(valor)
 );
+const nomeTipoNegociacao = (tipo) => ({
+  venda: 'compra',
+  troca: 'troca',
+  doacao: 'doação'
+}[tipo] || 'aquisição');
 
 export const buscarRastreioPorToken = async (token) => {
   const snapshot = await livros.where('qrToken', '==', token).limit(1).get();
@@ -109,8 +114,15 @@ export const solicitarAquisicao = async (livroId, usuarioId, usuarioNome, tipoNe
     transaction.update(ref, { transferenciaPendente });
     transaction.set(notificacaoRef, {
       usuarioId: livro.usuarioId,
-      mensagem: 'Você recebeu um pedido de aquisição de um livro',
+      titulo: 'Novo pedido de negociação',
+      mensagem: `${usuarioNome || 'Uma pessoa'} solicitou ${nomeTipoNegociacao(tipoNegociacao)} do livro "${livro.titulo || 'sem título'}". Acesse seus anúncios para confirmar ou recusar.`,
       tipo: 'aquisicao',
+      acao: 'revisar-aquisicao',
+      livroId,
+      livroTitulo: livro.titulo || '',
+      solicitanteId: usuarioId,
+      solicitanteNome: usuarioNome || '',
+      tipoNegociacao,
       lida: false,
       criadoEm: solicitadaEm
     });
@@ -175,8 +187,12 @@ export const confirmarAquisicao = async (livroId, proprietarioId) => {
     transaction.set(negociacaoRef, negociacao);
     transaction.set(notificacaoRef, {
       usuarioId: transferencia.solicitanteId,
-      mensagem: 'Sua aquisição foi confirmada; o livro está na sua estante',
+      titulo: 'Negociação confirmada',
+      mensagem: `O proprietário confirmou sua ${nomeTipoNegociacao(transferencia.tipoNegociacao)} do livro "${livro.titulo || 'sem título'}". O livro está na sua estante.`,
       tipo: 'aquisicao',
+      livroId,
+      livroTitulo: livro.titulo || '',
+      tipoNegociacao: transferencia.tipoNegociacao,
       lida: false,
       criadoEm: dataConcluida
     });
@@ -205,8 +221,12 @@ export const recusarAquisicao = async (livroId, proprietarioId) => {
     transaction.update(ref, { transferenciaPendente: null });
     transaction.set(notificacaoRef, {
       usuarioId: livro.transferenciaPendente.solicitanteId,
-      mensagem: 'O proprietário recusou o pedido de aquisição do livro',
+      titulo: 'Negociação recusada',
+      mensagem: `O proprietário recusou seu pedido de ${nomeTipoNegociacao(livro.transferenciaPendente.tipoNegociacao)} do livro "${livro.titulo || 'sem título'}".`,
       tipo: 'aquisicao',
+      livroId,
+      livroTitulo: livro.titulo || '',
+      tipoNegociacao: livro.transferenciaPendente.tipoNegociacao,
       lida: false,
       criadoEm: recusadaEm
     });

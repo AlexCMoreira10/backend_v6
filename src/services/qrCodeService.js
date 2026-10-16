@@ -16,7 +16,7 @@ const baseUrl = () => {
 };
 
 export const criarUrlRastreio = (token) =>
-  `${baseUrl()}/livros/rastreio/${encodeURIComponent(token)}`;
+  `${baseUrl()}/html/rastreio.html?token=${encodeURIComponent(token)}`;
 
 export const gerarQrCode = (url) =>
   QRCode.toDataURL(url, { errorCorrectionLevel: 'M', type: 'image/png' });
