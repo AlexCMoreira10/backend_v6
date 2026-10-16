@@ -119,7 +119,7 @@ export const listarLivros = async (filtros) => {
     delete dados.transferenciaPendente;
     return { id: doc.id, ...dados };
   }).filter(livro =>
-    livro.status !== 'na_estante' && livro.estadoAcervo !== 'roubado'
+    livro.status !== 'na_estante' && !['roubado', 'perdido'].includes(livro.estadoAcervo)
   );
 
   // 🔎 Busca parcial por título (Node)

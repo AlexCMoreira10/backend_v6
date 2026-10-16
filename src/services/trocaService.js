@@ -75,8 +75,8 @@ export const concluirTroca = async (id, usuarioId) => {
       livroDesejado.usuarioId !== troca.destinatarioId ||
       livroOfertado.status !== 'disponivel' ||
       livroDesejado.status !== 'disponivel' ||
-      livroOfertado.estadoAcervo === 'roubado' ||
-      livroDesejado.estadoAcervo === 'roubado' ||
+      ['roubado', 'perdido'].includes(livroOfertado.estadoAcervo) ||
+      ['roubado', 'perdido'].includes(livroDesejado.estadoAcervo) ||
       livroOfertado.transferenciaPendente ||
       livroDesejado.transferenciaPendente
     ) {

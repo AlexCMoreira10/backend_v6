@@ -96,8 +96,8 @@ export const solicitarAquisicao = async (livroId, usuarioId, usuarioNome, tipoNe
     if (livro.status !== 'disponivel') {
       falhar(409, 'Este livro não está disponível para aquisição');
     }
-    if (livro.estadoAcervo === 'roubado') {
-      falhar(409, 'Este livro foi marcado como roubado e não pode ser transferido');
+    if (['roubado', 'perdido'].includes(livro.estadoAcervo)) {
+      falhar(409, 'Este livro foi marcado como roubado ou perdido e não pode ser transferido');
     }
     if (livro.transferenciaPendente) {
       falhar(409, 'Já existe uma aquisição pendente para este livro');
@@ -158,8 +158,8 @@ export const confirmarAquisicao = async (livroId, proprietarioId) => {
     if (livro.status !== 'disponivel') {
       falhar(409, 'A disponibilidade do livro mudou; a transferência não foi concluída');
     }
-    if (livro.estadoAcervo === 'roubado') {
-      falhar(409, 'Este livro foi marcado como roubado e não pode ser transferido');
+    if (['roubado', 'perdido'].includes(livro.estadoAcervo)) {
+      falhar(409, 'Este livro foi marcado como roubado ou perdido e não pode ser transferido');
     }
 
     const negociacao = {
@@ -274,8 +274,8 @@ export const registrarAvaliacao = async (livroId, usuarioId, comentario) => {
 };
 
 export const marcarEstadoAcervo = async (livroId, usuarioId, estado) => {
-  if (!['roubado', 'danificado'].includes(estado)) {
-    falhar(400, 'Estado inválido; use "roubado" ou "danificado"');
+  if (!['normal', 'roubado', 'perdido', 'danificado'].includes(estado)) {
+    falhar(400, 'Estado inválido; use "normal", "roubado", "perdido" ou "danificado"');
   }
 
   const ref = livros.doc(livroId);
@@ -293,29 +293,42 @@ export const marcarEstadoAcervo = async (livroId, usuarioId, estado) => {
     if (livro.usuarioId !== usuarioId) {
       falhar(403, 'Somente o proprietário atual pode atualizar o estado do livro');
     }
-    if (livro.estadoAcervo && livro.estadoAcervo !== 'normal') {
+    const estadoAtual = livro.estadoAcervo || 'normal';
+    if (estado === estadoAtual) {
+      return {
+        id: livroId,
+        estadoAcervo: estadoAtual,
+        estadoAcervoAtualizadoEm: livro.estadoAcervoAtualizadoEm || null
+      };
+    }
+    if (estado === 'normal' && !['roubado', 'perdido'].includes(estadoAtual)) {
+      falhar(409, 'Somente a marcação de roubado ou perdido pode ser desativada');
+    }
+    if (estado !== 'normal' && estadoAtual !== 'normal') {
       falhar(409, 'O livro já possui um estado registrado');
     }
 
     transaction.update(ref, {
       estadoAcervo: estado,
       estadoAcervoAtualizadoEm: atualizadoEm,
-      ...(estado === 'roubado' ? { transferenciaPendente: null } : {})
+      ...(estado === 'normal' ? { estadoAcervoDesativadoEm: atualizadoEm } : {}),
+      ...(['roubado', 'perdido'].includes(estado) ? { transferenciaPendente: null } : {})
     });
     const itemEstante = formatarItemEstante(livroId, {
       ...livro,
       estadoAcervo: estado,
       estadoAcervoAtualizadoEm: atualizadoEm,
-      ...(estado === 'roubado' ? { transferenciaPendente: null } : {})
+      ...(estado === 'normal' ? { estadoAcervoDesativadoEm: atualizadoEm } : {}),
+      ...(['roubado', 'perdido'].includes(estado) ? { transferenciaPendente: null } : {})
     });
     transaction.set(
       estanteRef,
       estanteSnapshot.exists ? { ...estanteSnapshot.data(), ...itemEstante } : itemEstante
     );
-    if (estado === 'roubado' && livro.transferenciaPendente) {
+    if (['roubado', 'perdido'].includes(estado) && livro.transferenciaPendente) {
       transaction.set(notificacoes.doc(), {
         usuarioId: livro.transferenciaPendente.solicitanteId,
-        mensagem: 'O pedido de aquisição foi cancelado porque o livro foi marcado como roubado',
+        mensagem: `O pedido de aquisição foi cancelado porque o livro foi marcado como ${estado}`,
         tipo: 'aquisicao',
         lida: false,
         criadoEm: atualizadoEm

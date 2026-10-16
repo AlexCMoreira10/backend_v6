@@ -254,9 +254,9 @@ Exemplo de body de atualização:
 #### Consultar e atualizar a estante
 
 - `GET {{baseUrl}}/api/me/estante` lista os livros atualmente pertencentes ao usuário autenticado a partir da coleção `estante`. Aceita `page`, `limit`, `titulo` e `estadoAcervo`. Registros antigos são migrados para essa coleção na primeira consulta. A coleção é atualizada junto com os anúncios em alterações de dados, retirada do catálogo e transferências de propriedade.
-- `PUT {{baseUrl}}/api/me/estante/:id/estado` marca um livro próprio como roubado ou danificado. Body: `{ "estadoAcervo": "roubado" }` ou `{ "estadoAcervo": "danificado" }`.
+- `PUT {{baseUrl}}/api/me/estante/:id/estado` atualiza o estado de um livro próprio. Body: `{ "estadoAcervo": "roubado" }`, `{ "estadoAcervo": "perdido" }`, `{ "estadoAcervo": "danificado" }` ou `{ "estadoAcervo": "normal" }`. A marcação de roubado/perdido pode ser desativada enviando `normal`; a de danificado não pode ser removida por essa rota.
 - `GET {{baseUrl}}/api/livros/:id/qrcode` retorna o QR Code e sua URL ao proprietário atual.
-- Livros marcados como roubados não podem ser adquiridos e não aparecem nos resultados de anúncios.
+- Livros marcados como roubados ou perdidos não podem ser adquiridos e não aparecem nos resultados de anúncios.
 
 #### Guia de integração no frontend
 
@@ -317,7 +317,7 @@ await apiFetch(`/livros/${livroId}/aquisicoes/recusar`, {
 });
 ```
 
-Após confirmar, atualize a tela e a estante. A estante é carregada com `GET /me/estante`; para marcar um livro como roubado ou danificado, envie `PUT /me/estante/:id/estado` com `{ "estadoAcervo": "roubado" }` ou `{ "estadoAcervo": "danificado" }`. `DELETE /livros/:id` retira apenas um anúncio ativo do catálogo e preserva o livro na estante do proprietário.
+Após confirmar, atualize a tela e a estante. A estante é carregada com `GET /me/estante`; para marcar um livro como roubado, perdido ou danificado, envie `PUT /me/estante/:id/estado` com `{ "estadoAcervo": "roubado" }`, `{ "estadoAcervo": "perdido" }` ou `{ "estadoAcervo": "danificado" }`. A marcação de roubado/perdido pode ser desativada com `{ "estadoAcervo": "normal" }`. `DELETE /livros/:id` retira apenas um anúncio ativo do catálogo e preserva o livro na estante do proprietário.
 
 Na página do histórico, mostre o formulário de comentário apenas para pessoas autenticadas que tenham tido a posse do livro; o backend valida essa regra e aceita um comentário por usuário. Envie `POST /livros/:id/avaliacoes` com `{ "comentario": "..." }`. Se o servidor responder `401`, peça para entrar novamente; exiba as mensagens de `400`, `403` e `409` para orientar o usuário (por exemplo, pedido pendente, aquisição já feita ou tentativa de comentar sem ter possuído o livro).
 
