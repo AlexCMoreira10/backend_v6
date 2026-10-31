@@ -8,6 +8,7 @@ import livroRoutes from './routes/livroRoutes.js';
 import trocaRoutes from './routes/trocaRoutes.js';
 import notificacaoRoutes from './routes/notificacaoRoutes.js';
 import mensagemRoutes from './routes/mensagemRoutes.js';
+import seboRoutes from './routes/seboRoutes.js';
 
 /*configurações*/
 const app = express();
@@ -26,5 +27,6 @@ app.use('/api', livroRoutes);
 app.use('/api', trocaRoutes);
 app.use('/api', notificacaoRoutes);
 app.use('/api', mensagemRoutes);
+app.use('/api', seboRoutes);
 
 export default app;

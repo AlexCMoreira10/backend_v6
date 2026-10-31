@@ -4,6 +4,8 @@
 
 Crie um arquivo `.env` na raiz usando `.env.example` como referência e preencha `FIREBASE_PROJECT_ID`, `FIREBASE_CLIENT_EMAIL` e `FIREBASE_PRIVATE_KEY` com os dados da conta de serviço do Firebase. Na chave privada, mantenha as quebras de linha como `\n`. Configure `PUBLIC_APP_URL` com a origem pública do frontend (sem `/api`); em produção, configure essa variável também nas variáveis de ambiente do projeto da Vercel.
 
+Para proteger os CPFs dos colaboradores, gere uma chave dedicada com `openssl rand -base64 32` e configure o resultado como `SUBACCOUNT_ENCRYPTION_KEY` no `.env` local e nas variáveis do projeto Vercel. Mantenha essa chave persistente e faça backup seguro: ela protege CPFs criptografados e seus índices de unicidade. Não troque a chave sem migrar os CPFs e índices existentes.
+
 Este repositório inclui `vercel.json` para publicar o servidor Express como função da Vercel. Para que a API hospedada gere QR Codes e consulte o histórico, o projeto da Vercel precisa estar conectado a este repositório (`AlexCMoreira10/backend_v6`) e usar um deploy que inclua o serviço de QR Code. Configure `FIREBASE_PROJECT_ID`, `FIREBASE_CLIENT_EMAIL`, `FIREBASE_PRIVATE_KEY` e `PUBLIC_APP_URL` nas variáveis de ambiente da Vercel e faça um novo deploy. `PUBLIC_APP_URL` deve ser a URL HTTPS do frontend, não a URL da API.
 
 ## 1. Visão geral
@@ -608,3 +610,148 @@ No Postman, copie a URL e defina o body conforme o exemplo abaixo para criar um 
   "localizacao": "São Paulo - SP"
 }
 ```
+
+## 7. Sebos parceiros
+
+Os perfis de sebos são gravados em `sebos/{uid}`. O UID vem do Firebase Authentication e é usado como `_id`; o cliente não pode escolher esse identificador. O CNPJ é validado no servidor e normalizado para um formato canônico. Para impedir duplicidade mesmo em cadastros simultâneos, o backend também mantém internamente `sebos_cnpj/{cnpj-normalizado}`.
+
+Depois de publicar estas alterações no repositório conectado à Vercel, os endpoints também ficam disponíveis na API hospedada.
+
+O cadastro e a consulta usam o ID token do Firebase no cabeçalho `Authorization: Bearer <FIREBASE_ID_TOKEN>`. Crie/autentique a conta no Firebase Authentication (e-mail/senha ou Google) antes de chamar a API. A senha nunca é enviada ao backend nem salva no Firestore. O e-mail informado no perfil deve corresponder ao e-mail da conta autenticada.
+
+### Criar cadastro de sebo
+
+- Método: `POST`
+- Endpoint local: `http://localhost:3000/api/sebos/cadastro`
+- Endpoint publicado: `https://babel-be-lovat.vercel.app/api/sebos/cadastro`
+- Autenticação: obrigatória.
+- Cabeçalho: `Content-Type: application/json`
+
+Exemplo de body:
+
+```json
+{
+  "nome": "Sebo Fatec",
+  "email": "sebo@email.com",
+  "cnpj": "20.182.807/0004-42",
+  "telefone": ["(11) 99999-9999", "(11) 88888-8888"],
+  "endereco": {
+    "rua": "Praça da Sé",
+    "numero": "1",
+    "complemento": "Loja 2",
+    "bairro": "Sé",
+    "cidade": "São Paulo",
+    "estado": "SP",
+    "cep": "01001-000"
+  },
+  "horario_funcionamento": {
+    "segunda": { "abre": "08:00", "fecha": "18:00" },
+    "terca": { "abre": "08:00", "fecha": "18:00" },
+    "quarta": { "abre": "08:00", "fecha": "18:00" },
+    "quinta": { "abre": "08:00", "fecha": "18:00" },
+    "sexta": { "abre": "08:00", "fecha": "18:00" },
+    "sabado": null,
+    "domingo": null
+  },
+  "geocode": {
+    "type": "Point",
+    "coordinates": [-46.6333, -23.5505]
+  }
+}
+```
+
+Regras:
+
+- `nome`, `email`, `cnpj`, `telefone`, `endereco` e `horario_funcionamento` são obrigatórios.
+- O CNPJ aceita o formato numérico tradicional e o alfanumérico novo; os dois dígitos verificadores são conferidos no servidor. A resposta armazena o CNPJ formatado.
+- Cada telefone deve conter DDD e 10 ou 11 dígitos.
+- O endereço exige rua, número, bairro, cidade, UF e CEP. O preenchimento automático do frontend consulta o ViaCEP; a API valida os dados recebidos sem depender do ViaCEP.
+- O objeto de horário deve conter `segunda`, `terca`, `quarta`, `quinta`, `sexta`, `sabado` e `domingo`. Cada dia é `null` quando fechado ou `{ "abre": "HH:MM", "fecha": "HH:MM" }` quando aberto. Deve haver pelo menos um dia aberto, e o horário de fechamento deve ser posterior ao de abertura.
+- `geocode` é opcional e deve ser um GeoJSON Point com `[longitude, latitude]`. `geoJson` também é aceito como nome alternativo.
+- `_id` e `uid` são derivados do token. A senha não deve ser enviada.
+- Resposta: `201 Created`; `400 Bad Request` para dados inválidos; `401 Unauthorized` para token inválido/ausente; `409 Conflict` para CNPJ ou conta já cadastrados.
+
+### Consultar o perfil autenticado
+
+- Método: `GET`
+- Endpoint local: `http://localhost:3000/api/sebos/me`
+- Endpoint publicado: `https://babel-be-lovat.vercel.app/api/sebos/me`
+- Autenticação: obrigatória.
+- Retorna o cadastro associado ao UID do token ou `404 Not Found` quando a conta ainda não tem perfil de sebo.
+
+## 8. Gestão de subcontas de colaboradores
+
+Apenas a conta proprietária/gestora autenticada do sebo pode criar, listar, editar, redefinir senhas, reativar ou revogar colaboradores. Cada colaborador tem login exclusivo, telefone opcional, CPF válido, senha temporária e permissões individuais. Login e telefone são identificadores únicos globalmente. O colaborador entra informando seu login ou telefone e a senha; e-mail/Google continuam sendo o acesso do gestor.
+
+O backend cria uma sessão de Firebase Authentication por custom token depois de conferir a senha armazenada com hash scrypt. Os tokens de colaboradores são marcados como `accountType: "sebo_staff"` e rejeitados pelas rotas existentes do aplicativo de usuários. Nas rotas de sebo, a API verifica em cada requisição se a subconta continua ativa e se pertence ao sebo indicado pelo token. A revogação desativa a conta sem remover o histórico; uma conta inativa não consegue autenticar ou usar tokens já emitidos.
+
+O CPF é validado no servidor, armazenado criptografado com AES-256-GCM e indexado por HMAC com `SUBACCOUNT_ENCRYPTION_KEY`. A API retorna somente o CPF mascarado para a interface de gestão. A senha temporária é armazenada somente como hash scrypt; o colaborador precisa defini-la novamente no primeiro login. O gestor também pode redefinir a senha, o que volta a exigir a troca no próximo acesso.
+
+### Login de colaborador
+
+- Método: `POST`
+- Endpoint: `{{baseUrl}}/api/sebos/subcontas/login`
+- Autenticação: não exige ID token; exige login/telefone e senha.
+
+```json
+{
+  "identificador": "ana.livros",
+  "senha": "SenhaTemporaria123"
+}
+```
+
+O identificador também pode ser o telefone com DDD. A resposta inclui `customToken` (para `signInWithCustomToken` do Firebase Client SDK) e os dados públicos da subconta. Login e senha inválidos retornam a mesma mensagem `401 Unauthorized`.
+
+### Consultar a sessão e a equipe
+
+- `GET /api/sebos/sessao`: exige o Firebase ID token do gestor ou colaborador e retorna o perfil e o tipo de conta. Permite consultar uma sessão ainda obrigada a trocar senha, mas não libera outras operações da subconta nesse estado.
+- `GET /api/sebos/subcontas`: lista colaboradores do sebo do token; somente gestor.
+
+Cabeçalho nas rotas autenticadas:
+
+```http
+Authorization: Bearer <FIREBASE_ID_TOKEN>
+```
+
+### Criar colaborador
+
+- Método: `POST`
+- Endpoint: `{{baseUrl}}/api/sebos/subcontas`
+- Autenticação: gestor do sebo.
+
+```json
+{
+  "nome": "Ana Colaboradora",
+  "login": "ana.livros",
+  "telefone": "(11) 99999-9999",
+  "cpf": "529.982.247-25",
+  "tipo": "cadastrador_acervo",
+  "permissoes": [
+    "acervo.consultar",
+    "acervo.cadastrar",
+    "acervo.editar"
+  ],
+  "senhaTemporaria": "SenhaTemporaria123"
+}
+```
+
+`telefone` é opcional. Se `permissoes` for omitido, a API aplica o conjunto padrão do tipo; se for enviado, ele substitui o padrão e pode ser personalizado:
+
+| Tipo (`tipo`) | Permissões iniciais |
+|---|---|
+| `cadastrador_acervo` | `acervo.consultar`, `acervo.cadastrar`, `acervo.editar`, `acervo.excluir` |
+| `operador_negociacoes` | `negociacoes.consultar`, `negociacoes.gerenciar` |
+| `gestor_financeiro` | `financeiro.consultar`, `financeiro.relatorios` |
+| `personalizado` | Nenhuma; marque as permissões necessárias |
+
+O login deve ter 3 a 32 caracteres e usar letras, números, ponto, hífen ou sublinhado. A senha temporária deve ter de 10 a 128 caracteres. A resposta não contém a senha nem o CPF completo. Duplicidade de login, telefone ou CPF retorna `409 Conflict`.
+
+### Editar, redefinir senha e revogar
+
+- `PATCH /api/sebos/subcontas/:id`: atualiza nome, login, telefone, tipo, permissões e/ou estado `ativo`.
+- `PATCH /api/sebos/subcontas/:id/senha`: recebe `{ "senhaTemporaria": "..." }`, define nova senha temporária e exige que a pessoa escolha nova senha ao entrar.
+- `DELETE /api/sebos/subcontas/:id`: revoga o acesso sem apagar o registro.
+- Para reativar, use `PATCH /api/sebos/subcontas/:id` com `{ "ativo": true }`.
+- O próprio colaborador troca a senha inicial por `PATCH /api/sebos/subcontas/minha-senha`, com `{ "novaSenha": "..." }` e seu ID token. Até a troca, qualquer outra rota autenticada de sebo responde `403 Forbidden`.
+
+As permissões podem ser verificadas por rotas de domínio no servidor com o middleware `exigirPermissaoSebo`. Esta etapa cria as permissões e os controles de subcontas, mas não implementa ainda operações de acervo comercial, vendas/trocas de sebo ou relatórios financeiros; as rotas desses módulos devem aplicar as chaves correspondentes antes de serem disponibilizadas. As rotas atuais dos usuários não dão acesso a colaboradores.
