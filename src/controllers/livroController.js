@@ -1,16 +1,25 @@
 import { randomBytes } from 'node:crypto';
-import { 
-    criarLivro, 
-    listarLivros,
-    buscarLivroPorId,
-    atualizarLivro,
-    listarLivrosPorUsuario,
-    listarEstantePorUsuario,
-    retirarAnuncio
+import { buscarSeboPorId } from '../services/seboService.js';
+import {
+  removerImagensLivro,
+  salvarImagemLivro
+} from '../services/seboImageService.js';
+import {
+  criarLivro,
+  listarLivros,
+  buscarLivroPorId,
+  atualizarLivro,
+  listarLivrosPorUsuario,
+  listarEstantePorUsuario,
+  retirarAnuncio
 } from '../services/livroService.js';
 import { criarUrlRastreio, gerarQrCode } from '../services/qrCodeService.js';
 
-export const criarLivroController = async (req, res) => {
+const criarLivroParaProprietario = async (
+  req,
+  res,
+  { usuarioId, usuarioNome, seboId, seboNome, exigirLocalizacao = false }
+) => {
   try {
     if (!req.body || typeof req.body !== 'object' || Array.isArray(req.body)) {
       return res.status(400).json({ erro: 'O body deve ser um objeto JSON' });
@@ -29,12 +38,37 @@ export const criarLivroController = async (req, res) => {
       preco,
       trocas,
       fotos,
-      localizacao
+      localizacao,
+      quantidadeEstoque
     } = req.body;
 
     if (!titulo || !autor) {
       return res.status(400).json({
         erro: 'Título e autor são obrigatórios'
+      });
+    }
+    if (exigirLocalizacao && (typeof localizacao !== 'string' || !localizacao.trim())) {
+      return res.status(400).json({
+        erro: 'A localização do livro no sebo é obrigatória'
+      });
+    }
+    if (
+      exigirLocalizacao &&
+      (!Number.isSafeInteger(quantidadeEstoque) || quantidadeEstoque < 1)
+    ) {
+      return res.status(400).json({
+        erro: 'A quantidade em estoque deve ser um número inteiro maior que zero'
+      });
+    }
+    if (
+      exigirLocalizacao &&
+      anoPublicacao != null &&
+      (!Number.isInteger(anoPublicacao) ||
+        anoPublicacao < 1500 ||
+        anoPublicacao > new Date().getFullYear())
+    ) {
+      return res.status(400).json({
+        erro: `O ano de publicação deve estar entre 1500 e ${new Date().getFullYear()}`
       });
     }
 
@@ -64,7 +98,6 @@ export const criarLivroController = async (req, res) => {
       });
     }
 
-    const usuarioId = req.usuario.uid;
     const qrToken = randomBytes(24).toString('base64url');
     const qrUrl = criarUrlRastreio(qrToken);
     const qrCode = await gerarQrCode(qrUrl);
@@ -84,12 +117,13 @@ export const criarLivroController = async (req, res) => {
       fotos: fotos || [],
       localizacao: localizacao || '',
       usuarioId,
-      usuarioNome: req.usuario.name || '',
+      usuarioNome,
       status: 'disponivel',
       estadoAcervo: 'normal',
       qrToken,
       qrUrl,
-      criadoEm: new Date()
+      criadoEm: new Date(),
+      ...(seboId ? { seboId, seboNome, quantidadeEstoque } : {})
     };
 
     const resultado = await criarLivro(novoLivro);
@@ -102,6 +136,66 @@ export const criarLivroController = async (req, res) => {
     return res.status(500).json({
       erro: 'Erro ao criar livro'
     });
+  }
+};
+
+export const criarLivroController = (req, res) => criarLivroParaProprietario(req, res, {
+  usuarioId: req.usuario.uid,
+  usuarioNome: req.usuario.name || ''
+});
+
+export const criarLivroSeboController = async (req, res) => {
+  try {
+    const sebo = await buscarSeboPorId(req.seboId);
+    if (!sebo) {
+      return res.status(404).json({ erro: 'Cadastro de sebo não encontrado' });
+    }
+
+    return criarLivroParaProprietario(req, res, {
+      usuarioId: req.seboId,
+      usuarioNome: sebo.nome,
+      seboId: req.seboId,
+      seboNome: sebo.nome,
+      exigirLocalizacao: true
+    });
+  } catch (error) {
+    console.error('Erro ao buscar o sebo para cadastrar livro:', error);
+    return res.status(500).json({ erro: 'Não foi possível cadastrar o livro para este sebo' });
+  }
+};
+
+export const enviarImagemLivroController = async (req, res) => {
+  if (!Buffer.isBuffer(req.body) || req.body.length === 0) {
+    return res.status(400).json({ erro: 'Envie uma imagem válida' });
+  }
+
+  try {
+    const imagem = await salvarImagemLivro({
+      seboId: req.seboId,
+      contentType: req.headers['content-type'],
+      conteudo: req.body
+    });
+    return res.status(201).json(imagem);
+  } catch (error) {
+    if (error.status) return res.status(error.status).json({ erro: error.message });
+    console.error('Erro ao salvar imagem do livro:', error);
+    return res.status(500).json({ erro: 'Não foi possível salvar a imagem do livro' });
+  }
+};
+
+export const removerImagensLivroController = async (req, res) => {
+  const { paths } = req.body || {};
+  if (!Array.isArray(paths) || paths.length > 5) {
+    return res.status(400).json({ erro: 'Informe uma lista válida de até 5 imagens' });
+  }
+
+  try {
+    await removerImagensLivro({ seboId: req.seboId, paths });
+    return res.status(204).end();
+  } catch (error) {
+    if (error.status) return res.status(error.status).json({ erro: error.message });
+    console.error('Erro ao remover imagens temporárias do livro:', error);
+    return res.status(500).json({ erro: 'Não foi possível remover as imagens temporárias' });
   }
 };
 

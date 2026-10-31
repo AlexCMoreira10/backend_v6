@@ -4,6 +4,8 @@
 
 Crie um arquivo `.env` na raiz usando `.env.example` como referência e preencha `FIREBASE_PROJECT_ID`, `FIREBASE_CLIENT_EMAIL` e `FIREBASE_PRIVATE_KEY` com os dados da conta de serviço do Firebase. Na chave privada, mantenha as quebras de linha como `\n`. Configure `PUBLIC_APP_URL` com a origem pública do frontend (sem `/api`); em produção, configure essa variável também nas variáveis de ambiente do projeto da Vercel.
 
+Para salvar as imagens de livros, configure `FIREBASE_STORAGE_BUCKET` com o nome do bucket do Firebase Storage (por exemplo, `babel-5dcbd.firebasestorage.app`) localmente e na Vercel. A conta de serviço usada pelo backend precisa ter permissão de criar e excluir objetos nesse bucket.
+
 Para proteger os CPFs dos colaboradores, gere uma chave dedicada com `openssl rand -base64 32` e configure o resultado como `SUBACCOUNT_ENCRYPTION_KEY` no `.env` local e nas variáveis do projeto Vercel. Mantenha essa chave persistente e faça backup seguro: ela protege CPFs criptografados e seus índices de unicidade. Não troque a chave sem migrar os CPFs e índices existentes.
 
 Este repositório inclui `vercel.json` para publicar o servidor Express como função da Vercel. Para que a API hospedada gere QR Codes e consulte o histórico, o projeto da Vercel precisa estar conectado a este repositório (`AlexCMoreira10/backend_v6`) e usar um deploy que inclua o serviço de QR Code. Configure `FIREBASE_PROJECT_ID`, `FIREBASE_CLIENT_EMAIL`, `FIREBASE_PRIVATE_KEY` e `PUBLIC_APP_URL` nas variáveis de ambiente da Vercel e faça um novo deploy. `PUBLIC_APP_URL` deve ser a URL HTTPS do frontend, não a URL da API.
@@ -679,6 +681,41 @@ Regras:
 - Autenticação: obrigatória.
 - Retorna o cadastro associado ao UID do token ou `404 Not Found` quando a conta ainda não tem perfil de sebo.
 
+### Cadastrar livro para um sebo
+
+- Método: `POST`
+- Endpoint: `{{baseUrl}}/api/sebos/livros`
+- Autenticação: gestor do sebo ou subconta com a permissão `acervo.cadastrar`.
+- Requer `titulo`, `autor`, `tipo` (`venda`, `troca` ou `doacao`), `localizacao` (posição do livro no estabelecimento) e `quantidadeEstoque` (inteiro maior que zero). `anoPublicacao`, quando informado, deve estar entre 1500 e o ano atual. Para venda, `preco` também é obrigatório.
+
+Exemplo de body:
+
+```json
+{
+  "titulo": "O Pequeno Príncipe",
+  "autor": "Antoine de Saint-Exupéry",
+  "descricao": "Edição em bom estado",
+  "editora": "Agir",
+  "anoPublicacao": 1943,
+  "generos": ["Infantil", "Fantasia"],
+  "idioma": "Português",
+  "condicao": "bom",
+  "tipo": "venda",
+  "preco": 35.9,
+  "localizacao": "Loja Centro, estante A, prateleira 2",
+  "quantidadeEstoque": 3
+}
+```
+
+O sebo e o proprietário são identificados pelo token; o servidor associa o nome do sebo e não aceita que o cliente escolha outro proprietário. A criação também registra o livro na estante e gera os dados do QR Code. Subcontas sem a permissão recebem `403 Forbidden`.
+
+As imagens podem ser enviadas antes do cadastro do livro:
+
+- `POST /api/sebos/livros/imagens`: envia o conteúdo binário de uma imagem com `Content-Type: image/jpeg`, `image/png` ou `image/webp`; máximo de 4 MB por arquivo. Retorna `url` para incluir em `fotos` e `path` para permitir a limpeza se o cadastro falhar.
+- `DELETE /api/sebos/livros/imagens`: recebe `{ "paths": ["sebos/<seboId>/livros/<arquivo>"] }` para remover uploads temporários. O servidor só permite excluir imagens dentro do diretório do sebo autenticado.
+
+As duas rotas exigem gestor ou subconta com `acervo.cadastrar`. O formulário aceita até cinco imagens por livro e remove os uploads temporários se a criação do livro falhar.
+
 ## 8. Gestão de subcontas de colaboradores
 
 Apenas a conta proprietária/gestora autenticada do sebo pode criar, listar, editar, redefinir senhas, reativar ou revogar colaboradores. Cada colaborador tem login exclusivo, telefone opcional, CPF válido, senha temporária e permissões individuais. Login e telefone são identificadores únicos globalmente. O colaborador entra informando seu login ou telefone e a senha; e-mail/Google continuam sendo o acesso do gestor.
@@ -754,4 +791,4 @@ O login deve ter 3 a 32 caracteres e usar letras, números, ponto, hífen ou sub
 - Para reativar, use `PATCH /api/sebos/subcontas/:id` com `{ "ativo": true }`.
 - O próprio colaborador troca a senha inicial por `PATCH /api/sebos/subcontas/minha-senha`, com `{ "novaSenha": "..." }` e seu ID token. Até a troca, qualquer outra rota autenticada de sebo responde `403 Forbidden`.
 
-As permissões podem ser verificadas por rotas de domínio no servidor com o middleware `exigirPermissaoSebo`. Esta etapa cria as permissões e os controles de subcontas, mas não implementa ainda operações de acervo comercial, vendas/trocas de sebo ou relatórios financeiros; as rotas desses módulos devem aplicar as chaves correspondentes antes de serem disponibilizadas. As rotas atuais dos usuários não dão acesso a colaboradores.
+As permissões são verificadas por rotas de domínio no servidor com o middleware `exigirPermissaoSebo`. O cadastro de livros do sebo usa `acervo.cadastrar`; gestores sempre podem executar essa operação. Outras operações de acervo comercial, vendas/trocas de sebo ou relatórios financeiros ainda precisam de endpoints próprios que apliquem as chaves correspondentes. As rotas atuais dos usuários não dão acesso a colaboradores.
