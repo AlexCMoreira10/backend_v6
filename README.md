@@ -714,7 +714,9 @@ As imagens podem ser enviadas antes do cadastro do livro:
 - `POST /api/sebos/livros/imagens`: envia o conteúdo binário de uma imagem com `Content-Type: image/jpeg`, `image/png` ou `image/webp`; máximo de 4 MB por arquivo. Retorna `url` para incluir em `fotos` e `path` para permitir a limpeza se o cadastro falhar.
 - `DELETE /api/sebos/livros/imagens`: recebe `{ "paths": ["sebos/<seboId>/livros/<arquivo>"] }` para remover uploads temporários. O servidor só permite excluir imagens dentro do diretório do sebo autenticado.
 
-As duas rotas exigem gestor ou subconta com `acervo.cadastrar`. O formulário aceita até cinco imagens por livro e remove os uploads temporários se a criação do livro falhar.
+As duas rotas exigem gestor ou subconta com `acervo.cadastrar`. O formulário aceita até cinco imagens por livro, combinando uploads e URLs HTTPS públicas informadas diretamente; o backend valida e armazena as URLs, mas não baixa nem hospeda imagens externas. URLs precisam apontar diretamente para uma imagem acessível. Links externos podem expirar ou deixar de funcionar. O formulário remove os uploads temporários se a criação do livro falhar.
+
+`GET /api/sebos/livros` lista os anúncios do sebo autenticado, com paginação e os filtros de `status`, `tipo` e `titulo` disponíveis. Gestores têm acesso; subcontas precisam da permissão `acervo.consultar`. A consulta sempre usa o ID do sebo derivado do token.
 
 ### Anunciar livros em massa
 

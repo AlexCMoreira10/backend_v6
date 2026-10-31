@@ -51,6 +51,16 @@ export const criarLivroSeboController = async (req, res) => {
   }
 };
 
+export const listarLivrosSeboController = async (req, res) => {
+  try {
+    const resultado = await listarLivrosPorUsuario(req.seboId, req.query);
+    return res.json(resultado);
+  } catch (error) {
+    console.error('Erro ao listar livros do sebo:', error);
+    return res.status(500).json({ erro: 'Não foi possível listar os livros do sebo' });
+  }
+};
+
 export const enviarImagemLivroController = async (req, res) => {
   if (!Buffer.isBuffer(req.body) || req.body.length === 0) {
     return res.status(400).json({ erro: 'Envie uma imagem válida' });

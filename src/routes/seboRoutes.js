@@ -24,6 +24,7 @@ import {
 } from '../controllers/subcontaController.js';
 import {
   criarLivroSeboController,
+  listarLivrosSeboController,
   enviarImagemLivroController,
   removerImagensLivroController
 } from '../controllers/livroController.js';
@@ -64,6 +65,12 @@ router.post('/sebos/cadastro', verificarToken, cadastrarSebo);
 router.post('/sebos/subcontas/login', autenticarSubconta);
 router.get('/sebos/sessao', verificarTokenSeboParaTrocaSenha, buscarMinhaSessao);
 router.get('/sebos/me', verificarTokenSebo, buscarMeuSeboController);
+router.get(
+  '/sebos/livros',
+  verificarTokenSebo,
+  exigirPermissaoSebo('acervo.consultar'),
+  listarLivrosSeboController
+);
 router.post(
   '/sebos/livros',
   verificarTokenSebo,

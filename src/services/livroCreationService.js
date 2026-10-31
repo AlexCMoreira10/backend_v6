@@ -3,11 +3,14 @@ import {
   criarLivro
 } from './livroService.js';
 import { criarUrlRastreio, gerarQrCode } from './qrCodeService.js';
+import { validarUrlsFotos } from '../utils/bookPhotoUrls.js';
 
 export const validarDadosNovoLivro = (dados, exigirDadosSebo = false) => {
   if (!dados || typeof dados !== 'object' || Array.isArray(dados)) {
     return 'O body deve ser um objeto JSON';
   }
+  const erroFotos = validarUrlsFotos(dados.fotos);
+  if (erroFotos) return erroFotos;
   if (!dados.titulo || !dados.autor) return 'Título e autor são obrigatórios';
   if (exigirDadosSebo && (typeof dados.localizacao !== 'string' || !dados.localizacao.trim())) {
     return 'A localização do livro no sebo é obrigatória';
