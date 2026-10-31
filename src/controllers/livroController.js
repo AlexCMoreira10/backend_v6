@@ -1,5 +1,9 @@
-import { randomBytes } from 'node:crypto';
 import { buscarSeboPorId } from '../services/seboService.js';
+import {
+  criarLivroImportadoSebo,
+  persistirLivro,
+  validarDadosNovoLivro
+} from '../services/livroCreationService.js';
 import {
   removerImagensLivro,
   salvarImagemLivro
@@ -13,154 +17,37 @@ import {
   listarEstantePorUsuario,
   retirarAnuncio
 } from '../services/livroService.js';
-import { criarUrlRastreio, gerarQrCode } from '../services/qrCodeService.js';
-
-const criarLivroParaProprietario = async (
-  req,
-  res,
-  { usuarioId, usuarioNome, seboId, seboNome, exigirLocalizacao = false }
-) => {
+export const criarLivroController = async (req, res) => {
+  const erro = validarDadosNovoLivro(req.body);
+  if (erro) return res.status(400).json({ erro });
   try {
-    if (!req.body || typeof req.body !== 'object' || Array.isArray(req.body)) {
-      return res.status(400).json({ erro: 'O body deve ser um objeto JSON' });
-    }
-
-    const {
-      titulo,
-      autor,
-      descricao,
-      editora,
-      anoPublicacao,
-      generos,
-      idioma,
-      condicao,
-      tipo,
-      preco,
-      trocas,
-      fotos,
-      localizacao,
-      quantidadeEstoque
-    } = req.body;
-
-    if (!titulo || !autor) {
-      return res.status(400).json({
-        erro: 'Título e autor são obrigatórios'
-      });
-    }
-    if (exigirLocalizacao && (typeof localizacao !== 'string' || !localizacao.trim())) {
-      return res.status(400).json({
-        erro: 'A localização do livro no sebo é obrigatória'
-      });
-    }
-    if (
-      exigirLocalizacao &&
-      (!Number.isSafeInteger(quantidadeEstoque) || quantidadeEstoque < 1)
-    ) {
-      return res.status(400).json({
-        erro: 'A quantidade em estoque deve ser um número inteiro maior que zero'
-      });
-    }
-    if (
-      exigirLocalizacao &&
-      anoPublicacao != null &&
-      (!Number.isInteger(anoPublicacao) ||
-        anoPublicacao < 1500 ||
-        anoPublicacao > new Date().getFullYear())
-    ) {
-      return res.status(400).json({
-        erro: `O ano de publicação deve estar entre 1500 e ${new Date().getFullYear()}`
-      });
-    }
-
-    const condicoesValidas = ['novo', 'bom', 'regular', 'usado'];
-    if (condicao && !condicoesValidas.includes(condicao)) {
-      return res.status(400).json({
-        erro: 'Condição inválida'
-      });
-    }
-
-    const tiposValidos = ['doacao', 'troca', 'venda'];
-    if (!tiposValidos.includes(tipo)) {
-      return res.status(400).json({
-        erro: 'Tipo inválido'
-      });
-    }
-
-    if (tipo === 'venda' && preco == null) {
-      return res.status(400).json({
-        erro: 'Preço é obrigatório para venda'
-      });
-    }
-
-    if ((tipo === 'doacao' || tipo === 'troca') && preco != null) {
-      return res.status(400).json({
-        erro: 'Preço não permitido para doação ou troca'
-      });
-    }
-
-    const qrToken = randomBytes(24).toString('base64url');
-    const qrUrl = criarUrlRastreio(qrToken);
-    const qrCode = await gerarQrCode(qrUrl);
-
-    const novoLivro = {
-      titulo,
-      autor,
-      descricao: descricao || '',
-      editora: editora || '',
-      anoPublicacao: anoPublicacao || null,
-      generos: generos || [],
-      idioma: idioma || '',
-      condicao: condicao || 'bom',
-      tipo,
-      preco: preco ?? null,
-      trocas: trocas || {},
-      fotos: fotos || [],
-      localizacao: localizacao || '',
-      usuarioId,
-      usuarioNome,
-      status: 'disponivel',
-      estadoAcervo: 'normal',
-      qrToken,
-      qrUrl,
-      criadoEm: new Date(),
-      ...(seboId ? { seboId, seboNome, quantidadeEstoque } : {})
-    };
-
-    const resultado = await criarLivro(novoLivro);
-    const resposta = { ...resultado, qrCode };
-    delete resposta.qrToken;
-    return res.status(201).json(resposta);
-
+    const livro = await persistirLivro({
+      dados: req.body,
+      usuarioId: req.usuario.uid,
+      usuarioNome: req.usuario.name || ''
+    });
+    return res.status(201).json(livro);
   } catch (error) {
     console.error(error);
-    return res.status(500).json({
-      erro: 'Erro ao criar livro'
-    });
+    return res.status(500).json({ erro: 'Erro ao criar livro' });
   }
 };
 
-export const criarLivroController = (req, res) => criarLivroParaProprietario(req, res, {
-  usuarioId: req.usuario.uid,
-  usuarioNome: req.usuario.name || ''
-});
-
 export const criarLivroSeboController = async (req, res) => {
+  const erro = validarDadosNovoLivro(req.body, true);
+  if (erro) return res.status(400).json({ erro });
   try {
     const sebo = await buscarSeboPorId(req.seboId);
-    if (!sebo) {
-      return res.status(404).json({ erro: 'Cadastro de sebo não encontrado' });
-    }
-
-    return criarLivroParaProprietario(req, res, {
-      usuarioId: req.seboId,
-      usuarioNome: sebo.nome,
+    if (!sebo) return res.status(404).json({ erro: 'Cadastro de sebo não encontrado' });
+    const livro = await criarLivroImportadoSebo({
       seboId: req.seboId,
       seboNome: sebo.nome,
-      exigirLocalizacao: true
+      dados: req.body
     });
+    return res.status(201).json(livro);
   } catch (error) {
-    console.error('Erro ao buscar o sebo para cadastrar livro:', error);
-    return res.status(500).json({ erro: 'Não foi possível cadastrar o livro para este sebo' });
+    console.error('Erro ao criar livro para o sebo:', error);
+    return res.status(500).json({ erro: 'Erro ao criar livro para o sebo' });
   }
 };
 

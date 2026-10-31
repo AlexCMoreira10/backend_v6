@@ -27,10 +27,18 @@ import {
   enviarImagemLivroController,
   removerImagensLivroController
 } from '../controllers/livroController.js';
+import {
+  baixarModeloAnunciosEmMassa,
+  importarAnunciosEmMassa
+} from '../controllers/livroImportacaoController.js';
 
 const router = express.Router();
 const parseImagemLivro = express.raw({
   type: ['image/jpeg', 'image/png', 'image/webp'],
+  limit: '4mb'
+});
+const parsePlanilhaLivros = express.raw({
+  type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
   limit: '4mb'
 });
 const interpretarImagemLivro = (req, res, next) => {
@@ -38,6 +46,15 @@ const interpretarImagemLivro = (req, res, next) => {
     if (!error) return next();
     if (error.status === 413) {
       return res.status(413).json({ erro: 'Cada imagem deve ter no máximo 4 MB' });
+    }
+    return next(error);
+  });
+};
+const interpretarPlanilhaLivros = (req, res, next) => {
+  parsePlanilhaLivros(req, res, (error) => {
+    if (!error) return next();
+    if (error.status === 413) {
+      return res.status(413).json({ erro: 'A planilha deve ter no máximo 4 MB' });
     }
     return next(error);
   });
@@ -65,6 +82,19 @@ router.delete(
   verificarTokenSebo,
   exigirPermissaoSebo('acervo.cadastrar'),
   removerImagensLivroController
+);
+router.get(
+  '/sebos/livros/importacao/modelo',
+  verificarTokenSebo,
+  exigirPermissaoSebo('acervo.cadastrar'),
+  baixarModeloAnunciosEmMassa
+);
+router.post(
+  '/sebos/livros/importacao',
+  verificarTokenSebo,
+  exigirPermissaoSebo('acervo.cadastrar'),
+  interpretarPlanilhaLivros,
+  importarAnunciosEmMassa
 );
 router.get('/sebos/subcontas/minha', verificarTokenSebo, exigirSubcontaSebo, buscarMinhaSubconta);
 router.patch('/sebos/subcontas/minha-senha', verificarTokenSeboParaTrocaSenha, exigirSubcontaSebo, trocarMinhaSenha);

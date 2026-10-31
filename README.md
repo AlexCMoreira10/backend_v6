@@ -716,6 +716,14 @@ As imagens podem ser enviadas antes do cadastro do livro:
 
 As duas rotas exigem gestor ou subconta com `acervo.cadastrar`. O formulário aceita até cinco imagens por livro e remove os uploads temporários se a criação do livro falhar.
 
+### Anunciar livros em massa
+
+- `GET /api/sebos/livros/importacao/modelo`: baixa um modelo Excel com as abas `Livros` e `Instruções`.
+- `POST /api/sebos/livros/importacao`: recebe o arquivo `.xlsx` binário e retorna outra planilha `.xlsx` com uma linha por registro, resultado, ID do livro salvo ou motivo da rejeição.
+- Ambas as rotas exigem gestor ou subconta com `acervo.cadastrar`.
+- O arquivo pode ter até 4 MB e conter até 100 livros. Cada linha válida é criada independentemente; falhas em outras linhas não desfazem os cadastros concluídos.
+- O modelo documenta os campos aceitos. Gêneros múltiplos devem ser separados por ponto e vírgula; tipo de anúncio aceita `venda`, `troca` ou `doacao`. Imagens não são importadas pela planilha.
+
 ## 8. Gestão de subcontas de colaboradores
 
 Apenas a conta proprietária/gestora autenticada do sebo pode criar, listar, editar, redefinir senhas, reativar ou revogar colaboradores. Cada colaborador tem login exclusivo, telefone opcional, CPF válido, senha temporária e permissões individuais. Login e telefone são identificadores únicos globalmente. O colaborador entra informando seu login ou telefone e a senha; e-mail/Google continuam sendo o acesso do gestor.

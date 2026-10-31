@@ -12,7 +12,13 @@ import seboRoutes from './routes/seboRoutes.js';
 
 /*configurações*/
 const app = express();
-app.use(cors());
+app.use(cors({
+  exposedHeaders: [
+    'X-Livros-Processados',
+    'X-Livros-Cadastrados',
+    'X-Livros-Rejeitados'
+  ]
+}));
 app.use(express.json());
 
 app.get('/', (req, res) => {
