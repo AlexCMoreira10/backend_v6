@@ -560,27 +560,27 @@ Colaboradores autenticados com a permissão `mensagens.gerenciar` acessam as men
   - `403 Forbidden` se o usuário autenticado não for o destinatário
   - `404 Not Found` se a mensagem não existir
 
-#### Apagar mensagem recebida
+#### Apagar mensagem ou ocultá-la da própria caixa de entrada
 
 - Método: `DELETE`
 - Endpoint: `{{baseUrl}}/api/mensagens/:id`
 - Cabeçalho: `Authorization: Bearer <token>`
-- Descrição: apaga uma mensagem recebida pelo usuário autenticado. O backend valida o destinatário antes de remover o documento; mensagens enviadas pelo próprio usuário não podem ser apagadas por esta rota.
-- Para colaboradores com `mensagens.gerenciar`, o destinatário é o sebo associado à subconta.
+- Descrição: se o usuário autenticado for o remetente, remove a mensagem para os dois participantes. Se for o destinatário, oculta a mensagem somente da sua caixa de entrada.
+- Para colaboradores com `mensagens.gerenciar`, o participante é o sebo associado à subconta.
 - Resposta:
-  - `200 OK` com `{ "mensagem": "Mensagem apagada" }`
+  - `200 OK` com `{ "mensagem": "Mensagem apagada para todos os participantes", "apagadaParaTodos": true }` para o remetente ou `{ "mensagem": "Mensagem apagada da sua caixa de entrada", "apagadaParaTodos": false }` para o destinatário
   - `401 Unauthorized` se o token estiver ausente ou inválido
-  - `403 Forbidden` se o usuário não for o destinatário ou o colaborador não tiver permissão
+  - `403 Forbidden` se o usuário não for participante da conversa ou o colaborador não tiver permissão
   - `404 Not Found` se a mensagem não existir
 
-#### Apagar todas as conversas
+#### Ocultar todas as conversas para o usuário autenticado
 
 - Método: `DELETE`
 - Endpoint: `{{baseUrl}}/api/mensagens`
 - Cabeçalho: `Authorization: Bearer <token>`
 - Body: `{ "senha": "senha-atual-do-funcionario" }`
-- Descrição: exige a senha atual do funcionário antes de apagar todo o histórico de mensagens do sebo, recebidas e enviadas. A API valida a senha da subconta e remove somente mensagens em que o sebo associado é remetente ou destinatário.
-- Resposta: `200 OK` com `{ "mensagem": "Conversas apagadas", "apagadas": 12 }`
+- Descrição: exige a senha atual do funcionário antes de ocultar todo o histórico de mensagens do sebo, recebidas e enviadas, somente na caixa de entrada do sebo. O outro participante continua vendo as mensagens normalmente. A API valida a senha da subconta e marca somente mensagens em que o sebo associado é remetente ou destinatário como ocultas para o sebo.
+- Resposta: `200 OK` com `{ "mensagem": "Conversas ocultadas para este usuário", "ocultadas": 12 }`
 - `400 Bad Request` se a senha não for informada; `403 Forbidden` se a senha estiver incorreta ou a conta não for de funcionário.
 
 ## 4. Erros comuns no Postman

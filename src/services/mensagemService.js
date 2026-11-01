@@ -1,4 +1,8 @@
-import { db } from '../config/firebase.js';
+import admin, { db } from '../config/firebase.js';
+import {
+  mensagemVisivelPara,
+  resultadoAoApagarMensagem
+} from '../utils/mensagemVisibility.js';
 
 const collection = db.collection('mensagens');
 
@@ -37,12 +41,14 @@ const ordenarPorData = (mensagemA, mensagemB, ordem = 'asc') => {
     : mensagemB.id.localeCompare(mensagemA.id);
 };
 
-const buscarMensagens = async (campo, valor) => {
+const buscarMensagens = async (campo, valor, idUsuario) => {
   const snapshot = await collection
     .where(campo, '==', valor)
     .get();
 
-  return snapshot.docs.map(converterMensagem);
+  return snapshot.docs
+    .filter((documento) => mensagemVisivelPara(documento.data(), idUsuario))
+    .map(converterMensagem);
 };
 
 const buscarMensagensDaConversa = async (idUsuario, idOutroUsuario) => {
@@ -57,10 +63,9 @@ const buscarMensagensDaConversa = async (idUsuario, idOutroUsuario) => {
       .get()
   ]);
 
-  return [
-    ...enviadasSnapshot.docs.map(converterMensagem),
-    ...recebidasSnapshot.docs.map(converterMensagem)
-  ];
+  return [...enviadasSnapshot.docs, ...recebidasSnapshot.docs]
+    .filter((documento) => mensagemVisivelPara(documento.data(), idUsuario))
+    .map(converterMensagem);
 };
 
 export const criarMensagem = async (dados) => {
@@ -85,13 +90,14 @@ export const existeConversa = async (idUsuario, idOutroUsuario) => {
       .limit(1)
       .get()
   ]);
-  return !mensagemEnviada.empty || !mensagemRecebida.empty;
+  return [...mensagemEnviada.docs, ...mensagemRecebida.docs]
+    .some((documento) => mensagemVisivelPara(documento.data(), idUsuario));
 };
 
 export const listarMensagensDoUsuario = async (idUsuario) => {
   const [enviadas, recebidas] = await Promise.all([
-    buscarMensagens('id_remetente', idUsuario),
-    buscarMensagens('id_destinatario', idUsuario)
+    buscarMensagens('id_remetente', idUsuario, idUsuario),
+    buscarMensagens('id_destinatario', idUsuario, idUsuario)
   ]);
 
   const mensagensUnicas = new Map(
@@ -191,7 +197,7 @@ export const marcarMensagemComoLida = async (id, idDestinatario) => {
   });
 };
 
-export const apagarMensagemRecebida = async (id, idDestinatario) => {
+export const ocultarMensagem = async (id, idUsuario) => {
   const referencia = collection.doc(id);
 
   return db.runTransaction(async (transacao) => {
@@ -201,39 +207,42 @@ export const apagarMensagemRecebida = async (id, idDestinatario) => {
       return 'nao_encontrada';
     }
 
-    if (documento.data().id_destinatario !== idDestinatario) {
-      return 'sem_permissao';
+    const mensagem = documento.data();
+    const resultado = resultadoAoApagarMensagem(mensagem, idUsuario);
+    if (resultado === 'sem_permissao') return resultado;
+    if (resultado === 'apagada_para_todos') {
+      transacao.delete(referencia);
+      return resultado;
     }
 
-    transacao.delete(referencia);
-    return 'apagada';
+    transacao.update(referencia, {
+      ocultada_para: admin.firestore.FieldValue.arrayUnion(idUsuario)
+    });
+    return resultado;
   });
 };
 
-export const apagarTodasMensagensDoUsuario = async (idUsuario) => {
-  let apagadas = 0;
+export const ocultarTodasMensagensDoUsuario = async (idUsuario) => {
+  const [enviadas, recebidas] = await Promise.all([
+    collection.where('id_remetente', '==', idUsuario).get(),
+    collection.where('id_destinatario', '==', idUsuario).get()
+  ]);
+  const documentos = new Map(
+    [...enviadas.docs, ...recebidas.docs].map((documento) => [documento.id, documento])
+  );
+  const paraOcultar = [...documentos.values()].filter(
+    (documento) => mensagemVisivelPara(documento.data(), idUsuario)
+  );
 
-  while (true) {
-    const [enviadas, recebidas] = await Promise.all([
-      collection
-        .where('id_remetente', '==', idUsuario)
-        .limit(250)
-        .get(),
-      collection
-        .where('id_destinatario', '==', idUsuario)
-        .limit(250)
-        .get()
-    ]);
-    const documentos = new Map(
-      [...enviadas.docs, ...recebidas.docs].map((documento) => [documento.id, documento])
-    );
-    if (documentos.size === 0) return apagadas;
-
+  for (let inicio = 0; inicio < paraOcultar.length; inicio += 500) {
     const lote = db.batch();
-    for (const documento of [...documentos.values()]) {
-      lote.delete(documento.ref);
+    for (const documento of paraOcultar.slice(inicio, inicio + 500)) {
+      lote.update(documento.ref, {
+        ocultada_para: admin.firestore.FieldValue.arrayUnion(idUsuario)
+      });
     }
     await lote.commit();
-    apagadas += documentos.size;
   }
+
+  return paraOcultar.length;
 };

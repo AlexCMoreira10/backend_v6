@@ -7,8 +7,8 @@ import {
   listarConversasDoUsuario,
   listarMensagensDaConversa,
   marcarMensagemComoLida,
-  apagarMensagemRecebida,
-  apagarTodasMensagensDoUsuario,
+  ocultarMensagem,
+  ocultarTodasMensagensDoUsuario,
   existeConversa
 } from '../services/mensagemService.js';
 
@@ -161,7 +161,7 @@ export const marcarMensagemComoLidaController = async (req, res) => {
 
 export const apagarMensagemController = async (req, res) => {
   try {
-    const resultado = await apagarMensagemRecebida(req.params.id, req.idUsuarioMensagens);
+    const resultado = await ocultarMensagem(req.params.id, req.idUsuarioMensagens);
 
     if (resultado === 'nao_encontrada') {
       return res.status(404).json({ erro: 'Mensagem não encontrada' });
@@ -169,11 +169,21 @@ export const apagarMensagemController = async (req, res) => {
 
     if (resultado === 'sem_permissao') {
       return res.status(403).json({
-        erro: 'Somente o destinatário pode apagar a mensagem'
+        erro: 'Somente os participantes podem apagar a mensagem da própria caixa de entrada'
       });
     }
 
-    return res.json({ mensagem: 'Mensagem apagada' });
+    if (resultado === 'apagada_para_todos') {
+      return res.json({
+        mensagem: 'Mensagem apagada para todos os participantes',
+        apagadaParaTodos: true
+      });
+    }
+
+    return res.json({
+      mensagem: 'Mensagem apagada da sua caixa de entrada',
+      apagadaParaTodos: false
+    });
   } catch (error) {
     console.error(error);
     return res.status(500).json({ erro: 'Erro ao apagar mensagem' });
@@ -198,8 +208,8 @@ export const apagarTodasMensagensController = async (req, res) => {
       return res.status(403).json({ erro: 'A senha informada está incorreta' });
     }
 
-    const apagadas = await apagarTodasMensagensDoUsuario(req.idUsuarioMensagens);
-    return res.json({ mensagem: 'Conversas apagadas', apagadas });
+    const ocultadas = await ocultarTodasMensagensDoUsuario(req.idUsuarioMensagens);
+    return res.json({ mensagem: 'Conversas ocultadas para este usuário', ocultadas });
   } catch (error) {
     console.error(error);
     return res.status(500).json({ erro: 'Erro ao apagar conversas' });
