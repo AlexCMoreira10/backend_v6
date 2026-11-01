@@ -4,6 +4,7 @@ import {
 } from './livroService.js';
 import { criarUrlRastreio, gerarQrCode } from './qrCodeService.js';
 import { validarUrlsFotos } from '../utils/bookPhotoUrls.js';
+import { copiarGeocodeSebo } from '../utils/seboGeocode.js';
 
 export const validarDadosNovoLivro = (dados, exigirDadosSebo = false) => {
   if (!dados || typeof dados !== 'object' || Array.isArray(dados)) {
@@ -44,7 +45,15 @@ export const validarDadosNovoLivro = (dados, exigirDadosSebo = false) => {
   return null;
 };
 
-export const persistirLivro = async ({ dados, usuarioId, usuarioNome, seboId, seboNome }) => {
+export const persistirLivro = async ({
+  dados,
+  usuarioId,
+  usuarioNome,
+  seboId,
+  seboNome,
+  geocodeSebo
+}) => {
+  const geocode = seboId ? copiarGeocodeSebo(geocodeSebo) : undefined;
   const qrToken = randomBytes(24).toString('base64url');
   const qrUrl = criarUrlRastreio(qrToken);
   const qrCode = await gerarQrCode(qrUrl);
@@ -69,6 +78,7 @@ export const persistirLivro = async ({ dados, usuarioId, usuarioNome, seboId, se
     qrToken,
     qrUrl,
     criadoEm: new Date(),
+    ...(geocode ? { geocode } : {}),
     ...(seboId ? { seboId, seboNome, quantidadeEstoque: dados.quantidadeEstoque } : {})
   };
   const resultado = await criarLivro(novoLivro);
@@ -77,7 +87,7 @@ export const persistirLivro = async ({ dados, usuarioId, usuarioNome, seboId, se
   return resposta;
 };
 
-export const criarLivroImportadoSebo = async ({ seboId, seboNome, dados }) => {
+export const criarLivroImportadoSebo = async ({ seboId, seboNome, dados, geocodeSebo }) => {
   const erro = validarDadosNovoLivro(dados, true);
   if (erro) {
     const falha = new Error(erro);
@@ -89,6 +99,7 @@ export const criarLivroImportadoSebo = async ({ seboId, seboNome, dados }) => {
     usuarioId: seboId,
     usuarioNome: seboNome,
     seboId,
-    seboNome
+    seboNome,
+    geocodeSebo
   });
 };

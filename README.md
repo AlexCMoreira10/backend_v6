@@ -670,6 +670,7 @@ Regras:
 - O endereço exige rua, número, bairro, cidade, UF e CEP. O preenchimento automático do frontend consulta o ViaCEP; a API valida os dados recebidos sem depender do ViaCEP.
 - O objeto de horário deve conter `segunda`, `terca`, `quarta`, `quinta`, `sexta`, `sabado` e `domingo`. Cada dia é `null` quando fechado ou `{ "abre": "HH:MM", "fecha": "HH:MM" }` quando aberto. Deve haver pelo menos um dia aberto, e o horário de fechamento deve ser posterior ao de abertura.
 - `geocode` é opcional e deve ser um GeoJSON Point com `[longitude, latitude]`. `geoJson` também é aceito como nome alternativo.
+- Ao cadastrar livros pelo sebo, a API copia automaticamente o `geocode` da loja para cada livro criado, inclusive nas importações em massa. A ordem segue GeoJSON: `coordinates[0]` é longitude e `coordinates[1]` é latitude. Se o sebo não tiver coordenadas cadastradas, o livro permanece sem `geocode`.
 - `_id` e `uid` são derivados do token. A senha não deve ser enviada.
 - Resposta: `201 Created`; `400 Bad Request` para dados inválidos; `401 Unauthorized` para token inválido/ausente; `409 Conflict` para CNPJ ou conta já cadastrados.
 
@@ -716,7 +717,7 @@ As imagens podem ser enviadas antes do cadastro do livro:
 
 As duas rotas exigem gestor ou subconta com `acervo.cadastrar`. O formulário aceita até cinco imagens por livro, combinando uploads e URLs HTTPS públicas informadas diretamente; o backend valida e armazena as URLs, mas não baixa nem hospeda imagens externas. URLs precisam apontar diretamente para uma imagem acessível. Links externos podem expirar ou deixar de funcionar. O formulário remove os uploads temporários se a criação do livro falhar.
 
-`GET /api/sebos/livros` lista os anúncios do sebo autenticado, com paginação e os filtros de `status`, `tipo` e `titulo` disponíveis. Gestores têm acesso; subcontas precisam da permissão `acervo.consultar`. A consulta sempre usa o ID do sebo derivado do token.
+`GET /api/sebos/livros` lista os anúncios do sebo autenticado, com paginação e os filtros de `status`, `tipo` e `titulo` disponíveis. Cada livro inclui `qrUrl` e `qrCode` (Data URI PNG) para rastreamento; o token privado não é retornado. Gestores têm acesso; subcontas precisam da permissão `acervo.consultar`. A consulta sempre usa o ID do sebo derivado do token.
 
 ### Anunciar livros em massa
 

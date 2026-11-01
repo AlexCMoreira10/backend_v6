@@ -17,6 +17,8 @@ import {
   listarEstantePorUsuario,
   retirarAnuncio
 } from '../services/livroService.js';
+import { garantirQrCodeLivro } from '../services/rastreamentoService.js';
+import { gerarQrCode } from '../services/qrCodeService.js';
 export const criarLivroController = async (req, res) => {
   const erro = validarDadosNovoLivro(req.body);
   if (erro) return res.status(400).json({ erro });
@@ -42,7 +44,8 @@ export const criarLivroSeboController = async (req, res) => {
     const livro = await criarLivroImportadoSebo({
       seboId: req.seboId,
       seboNome: sebo.nome,
-      dados: req.body
+      dados: req.body,
+      geocodeSebo: sebo.geocode
     });
     return res.status(201).json(livro);
   } catch (error) {
@@ -54,7 +57,19 @@ export const criarLivroSeboController = async (req, res) => {
 export const listarLivrosSeboController = async (req, res) => {
   try {
     const resultado = await listarLivrosPorUsuario(req.seboId, req.query);
-    return res.json(resultado);
+    const dados = await Promise.all(resultado.dados.map(async (livro) => {
+      const { qrUrl } = livro.qrUrl
+        ? livro
+        : await garantirQrCodeLivro(livro.id);
+      const livroSeguro = { ...livro };
+      delete livroSeguro.qrToken;
+      return {
+        ...livroSeguro,
+        qrUrl,
+        qrCode: await gerarQrCode(qrUrl)
+      };
+    }));
+    return res.json({ ...resultado, dados });
   } catch (error) {
     console.error('Erro ao listar livros do sebo:', error);
     return res.status(500).json({ erro: 'Não foi possível listar os livros do sebo' });
