@@ -578,8 +578,10 @@ Colaboradores autenticados com a permissão `mensagens.gerenciar` acessam as men
 - Método: `DELETE`
 - Endpoint: `{{baseUrl}}/api/mensagens`
 - Cabeçalho: `Authorization: Bearer <token>`
-- Descrição: apaga todo o histórico de mensagens do usuário autenticado, recebidas e enviadas, removendo as conversas da caixa de entrada. Para colaboradores autorizados, a operação abrange somente as mensagens em que o sebo associado à subconta é remetente ou destinatário.
+- Body: `{ "senha": "senha-atual-do-funcionario" }`
+- Descrição: exige a senha atual do funcionário antes de apagar todo o histórico de mensagens do sebo, recebidas e enviadas. A API valida a senha da subconta e remove somente mensagens em que o sebo associado é remetente ou destinatário.
 - Resposta: `200 OK` com `{ "mensagem": "Conversas apagadas", "apagadas": 12 }`
+- `400 Bad Request` se a senha não for informada; `403 Forbidden` se a senha estiver incorreta ou a conta não for de funcionário.
 
 ## 4. Erros comuns no Postman
 

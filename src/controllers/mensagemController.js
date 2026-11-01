@@ -1,5 +1,6 @@
 import { buscarUsuarioPorId } from '../services/userService.js';
 import { buscarSeboPorId } from '../services/seboService.js';
+import { verificarSenha } from '../utils/subcontaSecurity.js';
 import {
   criarMensagem,
   listarMensagensDoUsuario,
@@ -180,7 +181,23 @@ export const apagarMensagemController = async (req, res) => {
 };
 
 export const apagarTodasMensagensController = async (req, res) => {
+  if (!req.subconta) {
+    return res.status(403).json({
+      erro: 'Somente funcionários podem apagar as conversas do sebo por esta operação'
+    });
+  }
+
+  const senha = req.body?.senha;
+  if (typeof senha !== 'string' || !senha) {
+    return res.status(400).json({ erro: 'Informe sua senha para confirmar a exclusão' });
+  }
+
   try {
+    const senhaValida = await verificarSenha(senha, req.subconta.credencial);
+    if (!senhaValida) {
+      return res.status(403).json({ erro: 'A senha informada está incorreta' });
+    }
+
     const apagadas = await apagarTodasMensagensDoUsuario(req.idUsuarioMensagens);
     return res.json({ mensagem: 'Conversas apagadas', apagadas });
   } catch (error) {
