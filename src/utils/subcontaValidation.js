@@ -3,21 +3,24 @@ export const PAPEIS_SUBCONTA = {
     'acervo.consultar',
     'acervo.cadastrar',
     'acervo.editar',
-    'acervo.excluir'
+    'acervo.excluir',
+    'mensagens.gerenciar'
   ],
   operador_negociacoes: [
     'negociacoes.consultar',
-    'negociacoes.gerenciar'
+    'negociacoes.gerenciar',
+    'mensagens.gerenciar'
   ],
   gestor_financeiro: [
     'financeiro.consultar',
-    'financeiro.relatorios'
+    'financeiro.relatorios',
+    'mensagens.gerenciar'
   ],
   personalizado: []
 };
 
 export const PERMISSOES_SUBCONTA = new Set(
-  Object.values(PAPEIS_SUBCONTA).flat()
+  [...Object.values(PAPEIS_SUBCONTA).flat(), 'mensagens.gerenciar']
 );
 
 export const normalizarLogin = (login) => String(login ?? '').trim().toLowerCase();

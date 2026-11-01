@@ -1,10 +1,14 @@
 import { buscarUsuarioPorId } from '../services/userService.js';
+import { buscarSeboPorId } from '../services/seboService.js';
 import {
   criarMensagem,
   listarMensagensDoUsuario,
   listarConversasDoUsuario,
   listarMensagensDaConversa,
-  marcarMensagemComoLida
+  marcarMensagemComoLida,
+  apagarMensagemRecebida,
+  apagarTodasMensagensDoUsuario,
+  existeConversa
 } from '../services/mensagemService.js';
 
 const LIMITE_PADRAO = 20;
@@ -31,7 +35,7 @@ const validarPaginacao = (query) => {
 
 export const enviarMensagemController = async (req, res) => {
   try {
-    const id_remetente = req.usuario.uid;
+    const id_remetente = req.idUsuarioMensagens;
     const { id_destinatario, conteudo } = req.body;
 
     if (!id_destinatario) {
@@ -42,12 +46,24 @@ export const enviarMensagemController = async (req, res) => {
       return res.status(400).json({ erro: 'Conteúdo da mensagem não pode ser vazio' });
     }
 
-    const remetente = await buscarUsuarioPorId(id_remetente);
-    if (!remetente) {
-      return res.status(404).json({ erro: 'Remetente não encontrado' });
+    if (!req.subconta) {
+      const remetente = await buscarUsuarioPorId(id_remetente);
+      if (!remetente) {
+        return res.status(404).json({ erro: 'Remetente não encontrado' });
+      }
     }
 
-    const destinatario = await buscarUsuarioPorId(id_destinatario);
+    if (
+      req.subconta &&
+      !await existeConversa(id_remetente, id_destinatario)
+    ) {
+      return res.status(403).json({
+        erro: 'A subconta só pode responder a conversas já recebidas pelo sebo'
+      });
+    }
+
+    const destinatario = await buscarUsuarioPorId(id_destinatario) ||
+      (!req.subconta ? await buscarSeboPorId(id_destinatario) : null);
     if (!destinatario) {
       return res.status(404).json({ erro: 'Destinatário não encontrado' });
     }
@@ -71,7 +87,7 @@ export const enviarMensagemController = async (req, res) => {
 
 export const listarMensagensController = async (req, res) => {
   try {
-    const mensagens = await listarMensagensDoUsuario(req.usuario.uid);
+    const mensagens = await listarMensagensDoUsuario(req.idUsuarioMensagens);
     return res.json(mensagens);
   } catch (error) {
     console.error(error);
@@ -81,7 +97,7 @@ export const listarMensagensController = async (req, res) => {
 
 export const listarConversasController = async (req, res) => {
   try {
-    const conversas = await listarConversasDoUsuario(req.usuario.uid);
+    const conversas = await listarConversasDoUsuario(req.idUsuarioMensagens);
     return res.json(conversas);
   } catch (error) {
     console.error(error);
@@ -90,7 +106,7 @@ export const listarConversasController = async (req, res) => {
 };
 
 export const listarMensagensDaConversaController = async (req, res) => {
-  const idUsuario = req.usuario.uid;
+  const idUsuario = req.idUsuarioMensagens;
   const { id_usuario: idOutroUsuario } = req.params;
   const paginacao = validarPaginacao(req.query);
 
@@ -123,7 +139,7 @@ export const listarMensagensDaConversaController = async (req, res) => {
 
 export const marcarMensagemComoLidaController = async (req, res) => {
   try {
-    const resultado = await marcarMensagemComoLida(req.params.id, req.usuario.uid);
+    const resultado = await marcarMensagemComoLida(req.params.id, req.idUsuarioMensagens);
 
     if (resultado === 'nao_encontrada') {
       return res.status(404).json({ erro: 'Mensagem não encontrada' });
@@ -139,5 +155,36 @@ export const marcarMensagemComoLidaController = async (req, res) => {
   } catch (error) {
     console.error(error);
     return res.status(500).json({ erro: 'Erro ao marcar mensagem como lida' });
+  }
+};
+
+export const apagarMensagemController = async (req, res) => {
+  try {
+    const resultado = await apagarMensagemRecebida(req.params.id, req.idUsuarioMensagens);
+
+    if (resultado === 'nao_encontrada') {
+      return res.status(404).json({ erro: 'Mensagem não encontrada' });
+    }
+
+    if (resultado === 'sem_permissao') {
+      return res.status(403).json({
+        erro: 'Somente o destinatário pode apagar a mensagem'
+      });
+    }
+
+    return res.json({ mensagem: 'Mensagem apagada' });
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({ erro: 'Erro ao apagar mensagem' });
+  }
+};
+
+export const apagarTodasMensagensController = async (req, res) => {
+  try {
+    const apagadas = await apagarTodasMensagensDoUsuario(req.idUsuarioMensagens);
+    return res.json({ mensagem: 'Conversas apagadas', apagadas });
+  } catch (error) {
+    console.error(error);
+    return res.status(500).json({ erro: 'Erro ao apagar conversas' });
   }
 };

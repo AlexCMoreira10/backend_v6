@@ -72,6 +72,22 @@ export const criarMensagem = async (dados) => {
   };
 };
 
+export const existeConversa = async (idUsuario, idOutroUsuario) => {
+  const [mensagemEnviada, mensagemRecebida] = await Promise.all([
+    collection
+      .where('id_remetente', '==', idUsuario)
+      .where('id_destinatario', '==', idOutroUsuario)
+      .limit(1)
+      .get(),
+    collection
+      .where('id_remetente', '==', idOutroUsuario)
+      .where('id_destinatario', '==', idUsuario)
+      .limit(1)
+      .get()
+  ]);
+  return !mensagemEnviada.empty || !mensagemRecebida.empty;
+};
+
 export const listarMensagensDoUsuario = async (idUsuario) => {
   const [enviadas, recebidas] = await Promise.all([
     buscarMensagens('id_remetente', idUsuario),
@@ -173,4 +189,51 @@ export const marcarMensagemComoLida = async (id, idDestinatario) => {
     transacao.update(referencia, { lida: true });
     return 'atualizada';
   });
+};
+
+export const apagarMensagemRecebida = async (id, idDestinatario) => {
+  const referencia = collection.doc(id);
+
+  return db.runTransaction(async (transacao) => {
+    const documento = await transacao.get(referencia);
+
+    if (!documento.exists) {
+      return 'nao_encontrada';
+    }
+
+    if (documento.data().id_destinatario !== idDestinatario) {
+      return 'sem_permissao';
+    }
+
+    transacao.delete(referencia);
+    return 'apagada';
+  });
+};
+
+export const apagarTodasMensagensDoUsuario = async (idUsuario) => {
+  let apagadas = 0;
+
+  while (true) {
+    const [enviadas, recebidas] = await Promise.all([
+      collection
+        .where('id_remetente', '==', idUsuario)
+        .limit(250)
+        .get(),
+      collection
+        .where('id_destinatario', '==', idUsuario)
+        .limit(250)
+        .get()
+    ]);
+    const documentos = new Map(
+      [...enviadas.docs, ...recebidas.docs].map((documento) => [documento.id, documento])
+    );
+    if (documentos.size === 0) return apagadas;
+
+    const lote = db.batch();
+    for (const documento of [...documentos.values()]) {
+      lote.delete(documento.ref);
+    }
+    await lote.commit();
+    apagadas += documentos.size;
+  }
 };

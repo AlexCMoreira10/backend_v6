@@ -61,3 +61,17 @@ test('allows selected permissions to differ from the preset and validates update
   assert.equal(update.erro, undefined);
   assert.equal(update.atualizacao.ativo, false);
 });
+
+test('allows message access for standard collaborator roles and custom assignments', () => {
+  for (const tipo of ['cadastrador_acervo', 'operador_negociacoes', 'gestor_financeiro']) {
+    assert.ok(PAPEIS_SUBCONTA[tipo].includes('mensagens.gerenciar'));
+  }
+
+  const personalizado = validarDadosSubconta({
+    ...dadosValidos(),
+    tipo: 'personalizado',
+    permissoes: ['mensagens.gerenciar']
+  });
+  assert.equal(personalizado.erro, undefined);
+  assert.deepEqual(personalizado.subconta.permissoes, ['mensagens.gerenciar']);
+});

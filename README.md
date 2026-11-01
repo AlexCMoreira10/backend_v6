@@ -420,7 +420,9 @@ Exemplos:
 
 ### 3.15 Mensagens
 
-> **Status:** o envio, o histórico, a listagem de conversas e a marcação de leitura estão implementados.
+> **Status:** envio, histórico, conversas, marcação de leitura, exclusão de mensagens recebidas e atendimento por colaboradores estão implementados.
+
+Colaboradores autenticados com a permissão `mensagens.gerenciar` acessam as mensagens do sebo associado à subconta. Respostas são enviadas em nome do sebo. A permissão é incluída nos tipos padrão de colaborador; subcontas personalizadas precisam recebê-la pelo gestor.
 
 #### Enviar mensagem para outro usuário
 
@@ -557,6 +559,27 @@ Exemplos:
   - `401 Unauthorized` se o token estiver ausente ou inválido
   - `403 Forbidden` se o usuário autenticado não for o destinatário
   - `404 Not Found` se a mensagem não existir
+
+#### Apagar mensagem recebida
+
+- Método: `DELETE`
+- Endpoint: `{{baseUrl}}/api/mensagens/:id`
+- Cabeçalho: `Authorization: Bearer <token>`
+- Descrição: apaga uma mensagem recebida pelo usuário autenticado. O backend valida o destinatário antes de remover o documento; mensagens enviadas pelo próprio usuário não podem ser apagadas por esta rota.
+- Para colaboradores com `mensagens.gerenciar`, o destinatário é o sebo associado à subconta.
+- Resposta:
+  - `200 OK` com `{ "mensagem": "Mensagem apagada" }`
+  - `401 Unauthorized` se o token estiver ausente ou inválido
+  - `403 Forbidden` se o usuário não for o destinatário ou o colaborador não tiver permissão
+  - `404 Not Found` se a mensagem não existir
+
+#### Apagar todas as conversas
+
+- Método: `DELETE`
+- Endpoint: `{{baseUrl}}/api/mensagens`
+- Cabeçalho: `Authorization: Bearer <token>`
+- Descrição: apaga todo o histórico de mensagens do usuário autenticado, recebidas e enviadas, removendo as conversas da caixa de entrada. Para colaboradores autorizados, a operação abrange somente as mensagens em que o sebo associado à subconta é remetente ou destinatário.
+- Resposta: `200 OK` com `{ "mensagem": "Conversas apagadas", "apagadas": 12 }`
 
 ## 4. Erros comuns no Postman
 
