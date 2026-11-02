@@ -19,14 +19,23 @@ import {
 } from '../services/livroService.js';
 import { garantirQrCodeLivro } from '../services/rastreamentoService.js';
 import { gerarQrCode } from '../services/qrCodeService.js';
+import { validarDimensoesEnvio } from '../utils/dimensoesEnvio.js';
+import { buscarUsuarioPorId } from '../services/userService.js';
+import { removerGeolocalizacaoLivro } from '../utils/bookLocationPrivacy.js';
 export const criarLivroController = async (req, res) => {
   const erro = validarDadosNovoLivro(req.body);
   if (erro) return res.status(400).json({ erro });
   try {
+    const perfil = await buscarUsuarioPorId(req.usuario.uid);
+    const dadosLivro = { ...req.body };
+    if (!dadosLivro.localizacao?.trim() && perfil?.endereco?.cep) {
+      dadosLivro.localizacao = perfil.endereco.cep;
+    }
     const livro = await persistirLivro({
-      dados: req.body,
+      dados: dadosLivro,
       usuarioId: req.usuario.uid,
-      usuarioNome: req.usuario.name || ''
+      usuarioNome: req.usuario.name || '',
+      geocodeUsuario: perfil?.geocode
     });
     return res.status(201).json(livro);
   } catch (error) {
@@ -127,6 +136,7 @@ export const listarLivrosController = async (req, res) => {
       delete livro.qrToken;
       if (livro.usuarioId !== req.usuario.uid) {
         delete livro.transferenciaPendente;
+        delete livro.geocode;
       }
       return res.json(livro);
     }
@@ -134,7 +144,10 @@ export const listarLivrosController = async (req, res) => {
     const filtros = req.query;
     const resultado = await listarLivros(filtros);
 
-    return res.json(resultado);
+    return res.json({
+    ...resultado,
+    dados: resultado.dados.map(removerGeolocalizacaoLivro)
+    });
 
   } catch (error) {
     console.error(error);
@@ -158,6 +171,7 @@ export const atualizarLivroController = async (req, res) => {
       'condicao',
       'tipo',
       'preco',
+      'dimensoes',
       'trocas',
       'fotos',
       'localizacao',
@@ -183,6 +197,8 @@ export const atualizarLivroController = async (req, res) => {
     if (Object.keys(dados).length === 0) {
       return res.status(400).json({ erro: 'Informe ao menos um campo válido para atualizar' });
     }
+    const erroDimensoes = validarDimensoesEnvio(dados.dimensoes);
+    if (erroDimensoes) return res.status(400).json({ erro: erroDimensoes });
 
     // 🔍 Verifica se existe
     const livro = await buscarLivroPorId(id);

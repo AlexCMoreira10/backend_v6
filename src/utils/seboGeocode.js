@@ -1,4 +1,4 @@
-export const copiarGeocodeSebo = (geocode) => {
+const copiarGeocodeValidado = (geocode, mensagemErro) => {
   if (geocode === undefined || geocode === null) return undefined;
   const { type, coordinates } = geocode;
   if (
@@ -12,7 +12,13 @@ export const copiarGeocodeSebo = (geocode) => {
     coordinates[1] < -90 ||
     coordinates[1] > 90
   ) {
-    throw new Error('A geolocalização cadastrada para o sebo é inválida');
+    throw new Error(mensagemErro);
   }
   return { type: 'Point', coordinates: [...coordinates] };
 };
+
+export const copiarGeocodeSebo = geocode =>
+  copiarGeocodeValidado(geocode, 'A geolocalização cadastrada para o sebo é inválida');
+
+export const copiarGeocodeUsuario = geocode =>
+  copiarGeocodeValidado(geocode, 'A geolocalização cadastrada para o usuário é inválida');

@@ -4,7 +4,8 @@ import {
 } from './livroService.js';
 import { criarUrlRastreio, gerarQrCode } from './qrCodeService.js';
 import { validarUrlsFotos } from '../utils/bookPhotoUrls.js';
-import { copiarGeocodeSebo } from '../utils/seboGeocode.js';
+import { validarDimensoesEnvio } from '../utils/dimensoesEnvio.js';
+import { copiarGeocodeSebo, copiarGeocodeUsuario } from '../utils/seboGeocode.js';
 
 export const validarDadosNovoLivro = (dados, exigirDadosSebo = false) => {
   if (!dados || typeof dados !== 'object' || Array.isArray(dados)) {
@@ -12,6 +13,8 @@ export const validarDadosNovoLivro = (dados, exigirDadosSebo = false) => {
   }
   const erroFotos = validarUrlsFotos(dados.fotos);
   if (erroFotos) return erroFotos;
+  const erroDimensoes = validarDimensoesEnvio(dados.dimensoes);
+  if (erroDimensoes) return erroDimensoes;
   if (!dados.titulo || !dados.autor) return 'Título e autor são obrigatórios';
   if (exigirDadosSebo && (typeof dados.localizacao !== 'string' || !dados.localizacao.trim())) {
     return 'A localização do livro no sebo é obrigatória';
@@ -51,9 +54,12 @@ export const persistirLivro = async ({
   usuarioNome,
   seboId,
   seboNome,
-  geocodeSebo
+  geocodeSebo,
+  geocodeUsuario
 }) => {
-  const geocode = seboId ? copiarGeocodeSebo(geocodeSebo) : undefined;
+  const geocode = seboId
+    ? copiarGeocodeSebo(geocodeSebo)
+    : copiarGeocodeUsuario(geocodeUsuario);
   const qrToken = randomBytes(24).toString('base64url');
   const qrUrl = criarUrlRastreio(qrToken);
   const qrCode = await gerarQrCode(qrUrl);
@@ -68,6 +74,7 @@ export const persistirLivro = async ({
     condicao: dados.condicao || 'bom',
     tipo: dados.tipo,
     preco: dados.preco ?? null,
+    ...(dados.dimensoes != null ? { dimensoes: dados.dimensoes } : {}),
     trocas: dados.trocas || {},
     fotos: dados.fotos || [],
     localizacao: dados.localizacao || '',

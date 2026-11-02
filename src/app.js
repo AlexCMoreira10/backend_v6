@@ -9,6 +9,7 @@ import trocaRoutes from './routes/trocaRoutes.js';
 import notificacaoRoutes from './routes/notificacaoRoutes.js';
 import mensagemRoutes from './routes/mensagemRoutes.js';
 import seboRoutes from './routes/seboRoutes.js';
+import melhorEnvioRoutes from './routes/melhorEnvioRoutes.js';
 
 /*configurações*/
 const app = express();
@@ -34,5 +35,6 @@ app.use('/api', trocaRoutes);
 app.use('/api', notificacaoRoutes);
 app.use('/api', mensagemRoutes);
 app.use('/api', seboRoutes);
+app.use('/api', melhorEnvioRoutes);
 
 export default app;

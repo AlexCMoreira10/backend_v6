@@ -10,6 +10,14 @@ Para proteger os CPFs dos colaboradores, gere uma chave dedicada com `openssl ra
 
 Este repositório inclui `vercel.json` para publicar o servidor Express como função da Vercel. Para que a API hospedada gere QR Codes e consulte o histórico, o projeto da Vercel precisa estar conectado a este repositório (`AlexCMoreira10/backend_v6`) e usar um deploy que inclua o serviço de QR Code. Configure `FIREBASE_PROJECT_ID`, `FIREBASE_CLIENT_EMAIL`, `FIREBASE_PRIVATE_KEY` e `PUBLIC_APP_URL` nas variáveis de ambiente da Vercel e faça um novo deploy. `PUBLIC_APP_URL` deve ser a URL HTTPS do frontend, não a URL da API.
 
+### Melhor Envio (sandbox)
+
+Para testar cotações, cadastre o aplicativo no painel Sandbox e configure `MELHOR_ENVIO_CLIENT_ID`, `MELHOR_ENVIO_CLIENT_SECRET`, `MELHOR_ENVIO_REDIRECT_URI`, `MELHOR_ENVIO_BASE_URL` e `MELHOR_ENVIO_SUPPORT_EMAIL` no `.env` e na Vercel. Use o callback exatamente como cadastrado no aplicativo: `https://babel-be-lovat.vercel.app/api/melhor-envio/callback`. O endereço `app-sandbox.melhorenvio.com.br` é o painel de cadastro; para testes, defina `MELHOR_ENVIO_BASE_URL=https://sandbox.melhorenvio.com.br`.
+
+Gere uma chave exclusiva para criptografar os tokens OAuth salvos no Firestore com `openssl rand -base64 32` e configure-a como `MELHOR_ENVIO_TOKEN_ENCRYPTION_KEY` localmente e na Vercel. Não compartilhe nem altere essa chave sem migrar os tokens já salvos. O segredo do aplicativo e os tokens nunca devem ser enviados ao frontend.
+
+As rotas `POST /api/melhor-envio/authorize` e `GET /api/melhor-envio/status` exigem autenticação Firebase. Cada vendedor conecta sua própria conta; o callback grava os tokens associados ao UID autenticado que iniciou o fluxo. `POST /api/livros/:id/frete` exige autenticação e usa o CEP de origem do livro ou do perfil do vendedor, CEP de destino informado pelo comprador e dimensões cadastradas no livro. Para produção, defina `MELHOR_ENVIO_BASE_URL=https://melhorenvio.com.br` e configure as credenciais e o callback do aplicativo de produção antes de publicar.
+
 ## 1. Visão geral
 
 - Base URL: `http://localhost:3000/api`
@@ -173,6 +181,21 @@ Exemplo de body válido:
   - `preco` é obrigatório se `tipo` for `venda`
   - `preco` não é permitido se `tipo` for `doacao` ou `troca`
   - o proprietário é identificado pelo token; `usuarioId` não deve ser enviado
+- Para anúncios de venda, o body pode incluir `dimensoes` com as dimensões do pacote em centímetros e o peso em gramas. Os quatro valores devem ser números maiores que zero. O campo é opcional para manter compatibilidade com anúncios e integrações existentes:
+
+```json
+{
+  "dimensoes": {
+    "altura": 4,
+    "largura": 14,
+    "comprimento": 21,
+    "peso": 450
+  }
+}
+```
+
+- O campo `dimensoes` também pode ser atualizado com `PUT /api/livros/:id` e é replicado para o registro correspondente na estante.
+- `localizacao` pode receber o CEP de origem. Ao criar um livro com o usuário autenticado, o backend copia a geolocalização GeoJSON previamente cadastrada pelo próprio usuário, quando disponível. As coordenadas não são incluídas nas respostas públicas do catálogo nem do histórico por QR Code.
 - O servidor cria o QR Code automaticamente. A resposta inclui `qrUrl` e `qrCode` (Data URI PNG). O QR abre `{PUBLIC_APP_URL}/html/rastreio.html?token={token}`, onde o usuário pode solicitar a negociação.
 - A publicação grava o livro em `livros` e cria, na mesma transação, um registro em `estante` para o proprietário atual.
 

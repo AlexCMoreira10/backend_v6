@@ -41,6 +41,7 @@ export const buscarRastreioPorToken = async (token) => {
 
   delete livro.qrToken;
   delete livro.transferenciaPendente;
+  delete livro.geocode;
 
   return {
     livro,
