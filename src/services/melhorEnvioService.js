@@ -14,6 +14,7 @@ import {
 const estadosOAuth = db.collection('melhor_envio_oauth_states');
 const tokensOAuth = db.collection('melhor_envio_tokens');
 const TEMPO_LIMITE_ESTADO_MS = 10 * 60 * 1000;
+const ID_CONTA_PLATAFORMA = 'platform';
 
 const obterConfiguracao = () => {
   const clientId = process.env.MELHOR_ENVIO_CLIENT_ID;
@@ -21,10 +22,11 @@ const obterConfiguracao = () => {
   const redirectUri = process.env.MELHOR_ENVIO_REDIRECT_URI;
   const baseUrl = process.env.MELHOR_ENVIO_BASE_URL || 'https://sandbox.melhorenvio.com.br';
   const supportEmail = process.env.MELHOR_ENVIO_SUPPORT_EMAIL;
+  const ownerUid = process.env.MELHOR_ENVIO_OWNER_UID;
 
-  if (!clientId || !clientSecret || !redirectUri || !supportEmail || !baseUrl) {
+  if (!clientId || !clientSecret || !redirectUri || !supportEmail || !baseUrl || !ownerUid) {
     throw new Error(
-      'Configure MELHOR_ENVIO_CLIENT_ID, MELHOR_ENVIO_CLIENT_SECRET, MELHOR_ENVIO_REDIRECT_URI, MELHOR_ENVIO_BASE_URL e MELHOR_ENVIO_SUPPORT_EMAIL.'
+      'Configure MELHOR_ENVIO_CLIENT_ID, MELHOR_ENVIO_CLIENT_SECRET, MELHOR_ENVIO_REDIRECT_URI, MELHOR_ENVIO_BASE_URL, MELHOR_ENVIO_SUPPORT_EMAIL e MELHOR_ENVIO_OWNER_UID.'
     );
   }
   let urlBase;
@@ -44,6 +46,7 @@ const obterConfiguracao = () => {
     clientId,
     clientSecret,
     redirectUri,
+    ownerUid,
     apiBaseUrl: urlBase.origin,
     userAgent: `Estante de Babel (${supportEmail})`
   };
@@ -98,9 +101,15 @@ const salvarTokens = async (uid, dados) => {
 
 export const criarUrlAutorizacaoMelhorEnvio = async (uid) => {
   const configuracao = obterConfiguracao();
+  if (uid !== configuracao.ownerUid) {
+    const erro = new Error('Somente o responsável pela plataforma pode conectar a conta do Melhor Envio.');
+    erro.status = 403;
+    throw erro;
+  }
+
   const state = randomBytes(32).toString('hex');
   await estadosOAuth.doc(state).set({
-    uid,
+    uid: ID_CONTA_PLATAFORMA,
     criadoEm: new Date()
   });
 
@@ -146,15 +155,19 @@ export const concluirAutorizacaoMelhorEnvio = async ({ code, state }) => {
 };
 
 export const consultarStatusMelhorEnvio = async (uid) => {
-  const documento = await tokensOAuth.doc(uid).get();
-  return { conectado: documento.exists };
+  const configuracao = obterConfiguracao();
+  const documento = await tokensOAuth.doc(ID_CONTA_PLATAFORMA).get();
+  return {
+    conectado: documento.exists,
+    podeAutorizar: uid === configuracao.ownerUid
+  };
 };
 
-const obterAccessToken = async (uid, forcarAtualizacao = false) => {
-  const ref = tokensOAuth.doc(uid);
+const obterAccessToken = async (forcarAtualizacao = false) => {
+  const ref = tokensOAuth.doc(ID_CONTA_PLATAFORMA);
   const documento = await ref.get();
   if (!documento.exists) {
-    const erro = new Error('O vendedor ainda não conectou sua conta do Melhor Envio.');
+    const erro = new Error('A conta de frete da plataforma ainda não foi conectada ao Melhor Envio.');
     erro.status = 409;
     throw erro;
   }
@@ -173,7 +186,7 @@ const obterAccessToken = async (uid, forcarAtualizacao = false) => {
   } catch (erro) {
     if ([400, 401, 422].includes(erro.status)) {
       await ref.delete();
-      const erroAutorizacao = new Error('A conexão do vendedor expirou. Ele precisa autorizar o Melhor Envio novamente.');
+      const erroAutorizacao = new Error('A conexão da plataforma expirou. O responsável precisa autorizar o Melhor Envio novamente.');
       erroAutorizacao.status = 409;
       throw erroAutorizacao;
     }
@@ -218,11 +231,11 @@ export const calcularFreteMelhorEnvio = async ({ livroId, cepDestino }) => {
     }
   );
 
-  let accessToken = await obterAccessToken(livro.usuarioId);
+  let accessToken = await obterAccessToken();
   let resposta = await consultarCotacao(accessToken);
   let dados = await resposta.json().catch(() => null);
   if (resposta.status === 401) {
-    accessToken = await obterAccessToken(livro.usuarioId, true);
+    accessToken = await obterAccessToken(true);
     resposta = await consultarCotacao(accessToken);
     dados = await resposta.json().catch(() => null);
   }
