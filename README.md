@@ -16,7 +16,11 @@ Para testar cotações, cadastre o aplicativo no painel Sandbox e configure `MEL
 
 Gere uma chave exclusiva para criptografar os tokens OAuth salvos no Firestore com `openssl rand -base64 32` e configure-a como `MELHOR_ENVIO_TOKEN_ENCRYPTION_KEY` localmente e na Vercel. Não compartilhe nem altere essa chave sem migrar os tokens já salvos. O segredo do aplicativo e os tokens nunca devem ser enviados ao frontend.
 
-As rotas `POST /api/melhor-envio/authorize` e `GET /api/melhor-envio/status` exigem autenticação Firebase. A conta compartilhada é autorizada uma única vez pelo UID definido em `MELHOR_ENVIO_OWNER_UID`; vendedores e compradores não precisam conectar suas próprias contas. O callback grava os tokens criptografados da plataforma no Firestore. `POST /api/livros/:id/frete` exige autenticação e usa o token compartilhado, o CEP de origem do livro ou do perfil do vendedor, o CEP de destino informado pelo comprador e as dimensões cadastradas no livro. Para produção, defina `MELHOR_ENVIO_BASE_URL=https://melhorenvio.com.br` e configure as credenciais e o callback do aplicativo de produção antes de publicar.
+As rotas `GET /api/melhor-envio/autorizar`, `POST /api/melhor-envio/authorize` (compatibilidade com o frontend atual) e `GET /api/melhor-envio/status` exigem autenticação Firebase. A conta compartilhada é autorizada pelo UID definido em `MELHOR_ENVIO_OWNER_UID`; vendedores e compradores não precisam conectar suas próprias contas. O callback grava os tokens criptografados da plataforma no Firestore e retorna ao frontend usando `PUBLIC_APP_URL`.
+
+`POST /api/melhor-envio/cotacao` não exige autenticação Firebase e recebe `{ "livroId": "...", "cepDestino": "00000000" }`; a rota retorna apenas cotações reais de livros anunciados para venda e disponíveis. O backend usa o CEP de origem do anúncio ou do perfil do vendedor, preço e dimensões físicas cadastradas no livro; não usa dimensões fictícias nem aceita dados físicos enviados pelo navegador. A rota antiga `POST /api/livros/:id/frete` continua disponível para compatibilidade. Se o livro não tiver CEP, valor declarado ou dimensões válidas, a API informa o dado ausente sem simular uma cotação.
+
+Para produção, defina `MELHOR_ENVIO_BASE_URL=https://melhorenvio.com.br` e configure as credenciais e o callback do aplicativo de produção antes de publicar. Além das quatro variáveis do aplicativo OAuth, mantenha configuradas `MELHOR_ENVIO_SUPPORT_EMAIL`, `MELHOR_ENVIO_OWNER_UID` e `MELHOR_ENVIO_TOKEN_ENCRYPTION_KEY`, além de `PUBLIC_APP_URL` apontando para a origem do frontend.
 
 ## 1. Visão geral
 
@@ -25,7 +29,7 @@ As rotas `POST /api/melhor-envio/authorize` e `GET /api/melhor-envio/status` exi
 
 ### 🔐 Autenticação
 
-- As rotas exigem autenticação via Firebase, exceto o cadastro de usuário, a listagem pública de livros (`GET /livros`) e a consulta pública do histórico pelo QR Code.
+- As rotas exigem autenticação via Firebase, exceto o cadastro de usuário, a listagem pública de livros (`GET /livros`), a cotação (`POST /melhor-envio/cotacao`) e a consulta pública do histórico pelo QR Code.
 - Cabeçalho obrigatório em todas as requisições protegidas:
   - Authorization: Bearer {{token}}
 - O `token` deve ser obtido após o login no Firebase. Após o cadastro por e-mail e senha, o front deve autenticar o usuário no Firebase e usar o ID token retornado nas rotas protegidas.

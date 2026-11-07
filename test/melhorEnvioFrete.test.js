@@ -69,7 +69,21 @@ test('rejects invalid CEPs, missing package dimensions, and invalid insurance va
   );
   assert.throws(
     () => criarPayloadCotacaoMelhorEnvio({
+      livro: livroValido,
+      cepDestino: ['20040020']
+    }),
+    { status: 400 }
+  );
+  assert.throws(
+    () => criarPayloadCotacaoMelhorEnvio({
       livro: { ...livroValido, preco: Number.NaN },
+      cepDestino: '20040020'
+    }),
+    { status: 422 }
+  );
+  assert.throws(
+    () => criarPayloadCotacaoMelhorEnvio({
+      livro: { ...livroValido, preco: null },
       cepDestino: '20040020'
     }),
     { status: 422 }
@@ -91,7 +105,18 @@ test('normalizes Melhor Envio quotes using the customized price and delivery tim
   }]), [{
     codigoServico: '1',
     nomeServico: 'Correios - PAC',
-    valor: '20.00',
+    valor: 20,
     prazoEntrega: 7
   }]);
+});
+
+test('omits quote entries without a real returned price', () => {
+  assert.deepEqual(normalizarCotacoesMelhorEnvio([{
+    id: 1,
+    name: 'PAC',
+    company: { name: 'Correios' },
+    price: null,
+    custom_price: null,
+    delivery_time: 5
+  }]), []);
 });

@@ -1,5 +1,6 @@
 const normalizarCep = (valor) => {
-  const cep = String(valor || '').replace(/\D/g, '');
+  if (typeof valor !== 'string') return null;
+  const cep = valor.replace(/\D/g, '');
   return /^\d{8}$/.test(cep) ? cep : null;
 };
 
@@ -29,6 +30,11 @@ export const criarPayloadCotacaoMelhorEnvio = ({ livro, vendedor, cepDestino }) 
     throw erro;
   }
 
+  if (livro.preco === null || livro.preco === undefined || livro.preco === '') {
+    const erro = new Error('Este livro não tem um valor declarado válido para o seguro do envio.');
+    erro.status = 422;
+    throw erro;
+  }
   const valorSeguro = Number(livro.preco);
   if (!Number.isFinite(valorSeguro) || valorSeguro < 0) {
     const erro = new Error('O preço do livro precisa ser válido para calcular o seguro do envio.');
@@ -60,10 +66,21 @@ export const normalizarCotacoesMelhorEnvio = (resposta) => {
 
   return cotacoes
     .filter(cotacao => !cotacao.error)
-    .map(cotacao => ({
-      codigoServico: String(cotacao.id || ''),
-      nomeServico: [cotacao.company?.name, cotacao.name].filter(Boolean).join(' - ') || 'Opção de envio',
-      valor: cotacao.custom_price ?? cotacao.price,
-      prazoEntrega: cotacao.custom_delivery_time ?? cotacao.delivery_time
-    }));
+    .map(cotacao => {
+      const valorInformado = cotacao.custom_price ?? cotacao.price;
+      const valor = valorInformado == null || valorInformado === ''
+        ? Number.NaN
+        : Number(valorInformado);
+      const prazoInformado = cotacao.custom_delivery_time ?? cotacao.delivery_time;
+      const prazoEntrega = prazoInformado == null || prazoInformado === ''
+        ? Number.NaN
+        : Number(prazoInformado);
+      return {
+        codigoServico: String(cotacao.id || ''),
+        nomeServico: [cotacao.company?.name, cotacao.name].filter(Boolean).join(' - ') || 'Opção de envio',
+        valor,
+        prazoEntrega: Number.isFinite(prazoEntrega) ? prazoEntrega : null
+      };
+    })
+    .filter(cotacao => Number.isFinite(cotacao.valor) && cotacao.valor >= 0);
 };
