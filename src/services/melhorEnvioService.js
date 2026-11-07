@@ -155,11 +155,12 @@ export const concluirAutorizacaoMelhorEnvio = async ({ code, state }) => {
 };
 
 export const consultarStatusMelhorEnvio = async (uid) => {
-  const configuracao = obterConfiguracao();
   const documento = await tokensOAuth.doc(ID_CONTA_PLATAFORMA).get();
+  const ownerUid = process.env.MELHOR_ENVIO_OWNER_UID;
   return {
     conectado: documento.exists,
-    podeAutorizar: uid === configuracao.ownerUid
+    podeAutorizar: Boolean(ownerUid && uid === ownerUid),
+    responsavelConfigurado: Boolean(ownerUid)
   };
 };
 

@@ -11,7 +11,9 @@ export const criarAutorizacaoMelhorEnvioController = async (req, res) => {
     return res.json({ url });
   } catch (error) {
     console.error('Erro ao iniciar autorização do Melhor Envio:', error);
-    return res.status(500).json({ erro: 'Não foi possível iniciar a autorização do Melhor Envio.' });
+    return res
+      .status(error.status || 500)
+      .json({ erro: error.status ? error.message : 'Não foi possível iniciar a autorização do Melhor Envio.' });
   }
 };
 
