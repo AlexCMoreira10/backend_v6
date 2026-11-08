@@ -37,11 +37,25 @@ export const calcularDistanciaKm = (origem, destino) => {
 export const validarRaioKm = raioKm =>
   [3, 5, 10].includes(Number(raioKm));
 
+export const livroDisponivelParaBusca = (livro = {}) => {
+  if (livro.status !== 'disponivel') return false;
+  if (['roubado', 'perdido'].includes(livro.estadoAcervo)) {
+    return false;
+  }
+  if (livro.seboId) {
+    if (!Number.isInteger(livro.quantidadeEstoque) || livro.quantidadeEstoque <= 0) {
+      return false;
+    }
+  }
+  return true;
+};
+
 export const filtrarLivrosProximos = ({
   livros,
   origem,
   raioKm,
   perfisPorId,
+  sebosPorId = new Map(),
   filtros = {},
   page = 1,
   limit = 16
@@ -55,13 +69,23 @@ export const filtrarLivrosProximos = ({
   }
 
   const resultados = livros.flatMap(livro => {
-    const ponto = obterCoordenadasGeocode(livro.geocode);
-    if (!ponto || livro.status === 'na_estante' ||
-        ['roubado', 'perdido'].includes(livro.estadoAcervo)) {
+    if (!livroDisponivelParaBusca(livro)) {
       return [];
     }
+    const ponto = obterCoordenadasGeocode(livro.geocode);
+    if (!ponto) return [];
 
-    if (!livro.seboId) {
+    if (livro.seboId) {
+      const sebo = sebosPorId.get(livro.seboId);
+      if (!sebo ||
+          (sebo.localizacaoSyncStatus &&
+           sebo.localizacaoSyncStatus !== 'sincronizado')) {
+        return [];
+      }
+      const versaoSebo = Number(sebo.localizacaoVersao) || 0;
+      const versaoLivro = Number(livro.localizacaoVersaoPerfil) || 0;
+      if (versaoLivro !== versaoSebo) return [];
+    } else {
       const perfil = perfisPorId.get(livro.usuarioId);
       if (!perfil || perfil.localizacaoSyncStatus === 'pendente') return [];
       const versaoPerfil = Number(perfil.localizacaoVersao) || 0;

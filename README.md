@@ -26,6 +26,34 @@ As rotas `GET /api/melhor-envio/autorizar`, `POST /api/melhor-envio/authorize` (
 
 Para produção, defina `MELHOR_ENVIO_BASE_URL=https://melhorenvio.com.br` e configure as credenciais e o callback do aplicativo de produção antes de publicar. Além das quatro variáveis do aplicativo OAuth, mantenha configuradas `MELHOR_ENVIO_SUPPORT_EMAIL`, `MELHOR_ENVIO_OWNER_UID` e `MELHOR_ENVIO_TOKEN_ENCRYPTION_KEY`, além de `PUBLIC_APP_URL` apontando para a origem do frontend.
 
+### Firestore Emulator para testes de integração
+
+Os testes de integração dedicados usam somente o projeto fictício `demo-estante-babel`, com Auth Emulator em `127.0.0.1:9099` e Firestore Emulator em `127.0.0.1:8080`. Storage, Functions e Emulator UI permanecem desativados. As regras do Firestore Emulator negam acesso de clientes; os testes usam a inicialização isolada do Admin SDK em `test/firestore-emulator/admin.js`.
+
+O guard valida os hosts exatos dos dois Emulators e o projeto `demo-estante-babel` antes de importar o Admin SDK. Também rejeita configuração de projeto/serviços de produção, credenciais externas e `FIREBASE_CONFIG` inconsistente. A inicialização isolada em `test/firestore-emulator/admin.js` não importa `src/config/firebase.js` nem carrega `.env`. Os fluxos de localização usam o mock de `test/firestore-emulator/geocodingMock.js`.
+
+Os testes de guard, autenticação simulada por unidade e isolamento do servidor podem ser executados sem iniciar Emulators:
+
+```bash
+npm run test:unit:emulator-guard
+```
+
+Para, futuramente, iniciar somente Auth e Firestore Emulators e a API exclusiva de teste:
+
+```bash
+npm run serve:test:emulator
+```
+
+Esse comando executa `test/firestore-emulator/server.js`, que escuta somente em `127.0.0.1:3000` e aceita CORS apenas de páginas HTTP em `localhost` ou `127.0.0.1`. Sua rota `GET /api/__test/health` consulta de fato o Auth Emulator e executa uma consulta somente de leitura ao Firestore Emulator, com timeout; retorna `503` se qualquer Emulator estiver indisponível. As rotas do perfil usam `verifyIdToken` do Admin SDK conectado ao Auth Emulator e as regras de autorização de gestor/subconta. Não há rota de health no servidor de produção.
+
+Para, futuramente, executar os testes de integração:
+
+```bash
+npm run test:integration:emulator
+```
+
+Esse script usa `firebase emulators:exec --project demo-estante-babel --only auth,firestore` e executa exclusivamente `test/firestore-emulator/*.test.js`. Não use `node --test` diretamente para os testes de integração. Os testes unitários existentes fora desse diretório não são executados pelo script.
+
 ## 1. Visão geral
 
 - Base URL: `http://localhost:3000/api`
@@ -801,6 +829,24 @@ Regras:
 - Autenticação: obrigatória.
 - Retorna o cadastro associado ao UID do token ou `404 Not Found` quando a conta ainda não tem perfil de sebo.
 
+### Atualizar o cadastro e sincronizar a localização
+
+- Método: `PATCH`
+- Endpoint: `/api/sebos/me`
+- Autenticação: obrigatória; somente o gestor do sebo. Subcontas recebem `403 Forbidden`.
+- Campos permitidos: `nome`, `telefone`, `endereco` e `horario_funcionamento`. A rota rejeita `uid`, `_id`, `seboId`, `cnpj`, `geocode` e qualquer outro campo não permitido.
+- A alteração do endereço comercial inicia uma nova versão da localização, remove imediatamente o `geocode` anterior do perfil e geocodifica o endereço no backend. Não usa GPS nem aceita coordenadas enviadas pelo app.
+- Os livros de `livros` com `seboId` correspondente recebem o novo `geocode` e `localizacaoVersaoPerfil` em lotes de 200 documentos. Apenas mudanças de endereço iniciam essa sincronização; alterações de nome, telefone e horários não percorrem anúncios.
+- A resposta inclui `localizacaoSyncStatus` (`sincronizado`, `pendente` ou `erro`) e, quando aplicável, `sincronizacaoLocalizacao` com a contagem atualizada ou erro recuperável. Anúncios de versões anteriores não aparecem na busca por proximidade enquanto a sincronização estiver pendente, com erro ou divergente.
+- Se a geocodificação falhar, o perfil permanece sem coordenadas atuais, em estado `erro`; o endereço salvo continua disponível para nova tentativa. Se um lote falhar, o cursor do último lote confirmado é preservado.
+
+Para retomar uma geocodificação ou sincronização interrompida:
+
+- Método: `POST`
+- Endpoint: `/api/sebos/me/localizacao/sincronizar`
+- Autenticação: obrigatória; somente o gestor do sebo.
+- A operação é segura para repetição. Se o endereço ainda não tiver coordenadas válidas, tenta geocodificá-lo novamente; se houver um cursor salvo, continua do próximo lote.
+
 ### Cadastrar livro para um sebo
 
 - Método: `POST`
@@ -827,7 +873,7 @@ Exemplo de body:
 }
 ```
 
-O sebo e o proprietário são identificados pelo token; o servidor associa o nome do sebo e não aceita que o cliente escolha outro proprietário. A criação também registra o livro na estante e gera os dados do QR Code. Subcontas sem a permissão recebem `403 Forbidden`.
+O sebo e o proprietário são identificados pelo token; o servidor associa o nome do sebo e não aceita que o cliente escolha outro proprietário. A criação também registra o livro na estante e gera os dados do QR Code. A API consulta a versão mais recente da localização e confere essa versão durante a gravação; se ela mudar simultaneamente, tenta novamente com o perfil atualizado. Subcontas sem a permissão recebem `403 Forbidden`.
 
 As imagens podem ser enviadas antes do cadastro do livro:
 

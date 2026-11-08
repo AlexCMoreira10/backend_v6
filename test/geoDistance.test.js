@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {
   calcularDistanciaKm,
   filtrarLivrosProximos,
+  livroDisponivelParaBusca,
   obterCoordenadasGeocode,
   validarPonto,
   validarRaioKm
@@ -91,6 +92,26 @@ test('filters by radius, title, type and status, then sorts by distance', () => 
   assert.ok(resultado.dados[0].distanciaKm > 4);
 });
 
+test('keeps available books without geocode eligible for the normal catalog', () => {
+  const livroSemGeocode = criarLivro('legacy-without-geocode', 0.01, {
+    geocode: undefined
+  });
+
+  assert.equal(livroDisponivelParaBusca(livroSemGeocode), true);
+});
+
+test('excludes available books without geocode from proximity results', () => {
+  const resultado = filtrarLivrosProximos({
+    livros: [criarLivro('legacy-without-geocode', 0.01, { geocode: undefined })],
+    origem,
+    raioKm: 3,
+    perfisPorId
+  });
+
+  assert.equal(resultado.total, 0);
+  assert.deepEqual(resultado.dados, []);
+});
+
 test('applies pagination after radius filtering and distance ordering', () => {
   const resultado = filtrarLivrosProximos({
     livros: [criarLivro('far', 0.08), criarLivro('near', 0.01), criarLivro('middle', 0.04)],
@@ -113,12 +134,88 @@ test('excludes users with pending location synchronization and includes sebo loc
   const resultado = filtrarLivrosProximos({
     livros: [
       criarLivro('pending-user', 0.01),
-      criarLivro('sebo', 0.02, { usuarioId: 'sebo-1', seboId: 'sebo-1' })
+      criarLivro('sebo', 0.02, { usuarioId: 'sebo-1', seboId: 'sebo-1', quantidadeEstoque: 1 })
     ],
     origem,
     raioKm: 3,
-    perfisPorId: perfis
+    perfisPorId: perfis,
+    sebosPorId: new Map([
+      ['sebo-1', { localizacaoVersao: 0, localizacaoSyncStatus: 'sincronizado' }]
+    ])
   });
 
   assert.deepEqual(resultado.dados.map(livro => livro.id), ['sebo']);
+});
+
+test('excludes sebo books while location is pending or the ad version is stale', () => {
+  const seboBook = criarLivro('sebo', 0.02, {
+    usuarioId: 'sebo-1',
+    seboId: 'sebo-1',
+    quantidadeEstoque: 1,
+    localizacaoVersaoPerfil: 2
+  });
+  const common = {
+    livros: [seboBook],
+    origem,
+    raioKm: 3
+  };
+
+  assert.equal(filtrarLivrosProximos({
+    ...common,
+    sebosPorId: new Map([
+      ['sebo-1', { localizacaoVersao: 2, localizacaoSyncStatus: 'pendente' }]
+    ])
+  }).total, 0);
+  assert.equal(filtrarLivrosProximos({
+    ...common,
+    sebosPorId: new Map([
+      ['sebo-1', { localizacaoVersao: 3, localizacaoSyncStatus: 'sincronizado' }]
+    ])
+  }).total, 0);
+  assert.equal(filtrarLivrosProximos({
+    ...common,
+    sebosPorId: new Map([
+      ['sebo-1', { localizacaoVersao: 2, localizacaoSyncStatus: 'sincronizado' }]
+    ])
+  }).total, 1);
+});
+
+test('requires stock above zero and available status for sebo books', () => {
+  const geocode = { type: 'Point', coordinates: [0.01, 0] };
+
+  assert.equal(livroDisponivelParaBusca({
+    geocode,
+    status: 'disponivel',
+    seboId: 'sebo-1',
+    quantidadeEstoque: 2
+  }), true);
+
+  assert.equal(livroDisponivelParaBusca({
+    geocode,
+    status: 'disponivel',
+    seboId: 'sebo-1',
+    quantidadeEstoque: 0
+  }), false);
+
+  assert.equal(livroDisponivelParaBusca({
+    geocode,
+    status: 'na_estante',
+    seboId: 'sebo-1',
+    quantidadeEstoque: 2
+  }), false);
+
+  assert.equal(livroDisponivelParaBusca({
+    geocode,
+    status: 'vendido',
+    seboId: 'sebo-1',
+    quantidadeEstoque: 2
+  }), false);
+
+  assert.equal(livroDisponivelParaBusca({
+    geocode,
+    status: 'disponivel',
+    seboId: 'sebo-1',
+    quantidadeEstoque: 2,
+    estadoAcervo: 'perdido'
+  }), false);
 });

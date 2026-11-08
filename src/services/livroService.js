@@ -2,6 +2,7 @@ import { db } from '../config/firebase.js';
 import { estante, formatarItemEstante } from './estanteService.js';
 import {
   filtrarLivrosProximos,
+  livroDisponivelParaBusca,
   obterCoordenadasGeocode
 } from '../utils/geoDistance.js';
 
@@ -10,18 +11,23 @@ const paraData = valor => (
   valor && typeof valor.toDate === 'function' ? valor.toDate() : new Date(valor || 0)
 );
 
-export const criarLivro = async (dados, { id, rascunhoId, usuarioId } = {}) => {
+export const criarLivro = async (
+  dados,
+  { id, rascunhoId, usuarioId, seboId, localizacaoVersaoPerfil } = {}
+) => {
   const docRef = id ? collection.doc(id) : collection.doc();
   const historicoRef = docRef.collection('historicoPosse').doc();
   const estanteRef = estante.doc(docRef.id);
   const rascunhoRef = rascunhoId
     ? db.collection('rascunhosLivros').doc(rascunhoId)
     : null;
+  const seboRef = seboId ? db.collection('sebos').doc(seboId) : null;
 
   const salvo = await db.runTransaction(async (transaction) => {
-    const [livroSnapshot, rascunhoSnapshot] = await Promise.all([
+    const [livroSnapshot, rascunhoSnapshot, seboSnapshot] = await Promise.all([
       transaction.get(docRef),
-      rascunhoRef ? transaction.get(rascunhoRef) : Promise.resolve(null)
+      rascunhoRef ? transaction.get(rascunhoRef) : Promise.resolve(null),
+      seboRef ? transaction.get(seboRef) : Promise.resolve(null)
     ]);
 
     if (livroSnapshot.exists) {
@@ -36,6 +42,21 @@ export const criarLivro = async (dados, { id, rascunhoId, usuarioId } = {}) => {
       const erro = new Error('Já existe um livro com este identificador');
       erro.status = 409;
       throw erro;
+    }
+
+    if (seboRef) {
+      if (!seboSnapshot?.exists) {
+        const erro = new Error('Cadastro de sebo não encontrado');
+        erro.status = 404;
+        throw erro;
+      }
+      const versaoAtual = Number(seboSnapshot.data().localizacaoVersao) || 0;
+      if (versaoAtual !== Number(localizacaoVersaoPerfil || 0)) {
+        const erro = new Error('A localização do sebo foi atualizada; tente cadastrar o livro novamente');
+        erro.status = 409;
+        erro.code = 'sebo/location-version-changed';
+        throw erro;
+      }
     }
 
     if (rascunhoRef) {
@@ -169,9 +190,7 @@ export const listarLivros = async (filtros) => {
     delete dados.qrToken;
     delete dados.transferenciaPendente;
     return { id: doc.id, ...dados };
-  }).filter(livro =>
-    livro.status !== 'na_estante' && !['roubado', 'perdido'].includes(livro.estadoAcervo)
-  );
+  }).filter(livro => livroDisponivelParaBusca(livro));
 
   // 🔎 Busca parcial por título (Node)
   if (filtros.titulo) {
@@ -220,9 +239,7 @@ export const listarLivrosProximos = async ({
     return { id: doc.id, ...dados };
   });
   const candidatos = livros.filter(livro => {
-    if (!obterCoordenadasGeocode(livro.geocode) ||
-        livro.status === 'na_estante' ||
-        ['roubado', 'perdido'].includes(livro.estadoAcervo)) {
+    if (!obterCoordenadasGeocode(livro.geocode) || !livroDisponivelParaBusca(livro)) {
       return false;
     }
     if (tipo && livro.tipo !== tipo) return false;
@@ -232,17 +249,26 @@ export const listarLivrosProximos = async ({
   const proprietarios = [...new Set(
     candidatos.filter(livro => !livro.seboId && livro.usuarioId).map(livro => livro.usuarioId)
   )];
-  const perfis = await Promise.all(proprietarios.map(async uid => {
-    const perfil = await db.collection('users').doc(uid).get();
-    return [uid, perfil.exists ? perfil.data() : null];
-  }));
+  const seboIds = [...new Set(candidatos.filter(livro => livro.seboId).map(livro => livro.seboId))];
+  const [perfis, sebos] = await Promise.all([
+    Promise.all(proprietarios.map(async uid => {
+      const perfil = await db.collection('users').doc(uid).get();
+      return [uid, perfil.exists ? perfil.data() : null];
+    })),
+    Promise.all(seboIds.map(async uid => {
+      const sebo = await db.collection('sebos').doc(uid).get();
+      return [uid, sebo.exists ? sebo.data() : null];
+    }))
+  ]);
   const perfisPorId = new Map(perfis);
+  const sebosPorId = new Map(sebos);
 
   return filtrarLivrosProximos({
     livros,
     origem: { latitude, longitude },
     raioKm,
     perfisPorId,
+    sebosPorId,
     filtros: { tipo, titulo },
     page,
     limit

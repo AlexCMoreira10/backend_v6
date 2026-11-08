@@ -23,9 +23,11 @@ test('preserves commercial sebo location while removing its coordinates', () => 
     id: 'livro-sebo',
     seboId: 'sebo-1',
     localizacao: 'Loja Centro, estante A',
+    localizacaoVersaoPerfil: 2,
     geocode: { type: 'Point', coordinates: [-46.6, -23.5] }
   });
 
   assert.equal(livroPublico.localizacao, 'Loja Centro, estante A');
   assert.equal(Object.hasOwn(livroPublico, 'geocode'), false);
+  assert.equal(Object.hasOwn(livroPublico, 'localizacaoVersaoPerfil'), false);
 });

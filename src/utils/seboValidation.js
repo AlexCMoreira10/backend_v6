@@ -90,22 +90,6 @@ const validarHorario = (horario) => {
   return algumDiaAberto;
 };
 
-const validarGeocode = (geocode) => {
-  if (geocode === undefined) return true;
-  if (!geocode || typeof geocode !== 'object' || Array.isArray(geocode)) return false;
-
-  const { type, coordinates } = geocode;
-  return type === 'Point' &&
-    Array.isArray(coordinates) &&
-    coordinates.length === 2 &&
-    Number.isFinite(coordinates[0]) &&
-    coordinates[0] >= -180 &&
-    coordinates[0] <= 180 &&
-    Number.isFinite(coordinates[1]) &&
-    coordinates[1] >= -90 &&
-    coordinates[1] <= 90;
-};
-
 export const formatarCnpj = (cnpj) => {
   const normalizado = normalizarCnpj(cnpj);
   return normalizado.replace(
@@ -125,11 +109,8 @@ export const validarCadastroSebo = (body = {}, emailAutenticado) => {
     cnpj,
     telefone,
     endereco,
-    horario_funcionamento,
-    geocode: geocodeInformado,
-    geoJson
+    horario_funcionamento
   } = body;
-  const geocode = geocodeInformado ?? geoJson;
 
   if (typeof nome !== 'string' || !nome.trim()) {
     return { erro: 'O nome do sebo é obrigatório' };
@@ -171,12 +152,6 @@ export const validarCadastroSebo = (body = {}, emailAutenticado) => {
     };
   }
 
-  if (!validarGeocode(geocode)) {
-    return {
-      erro: 'A geolocalização deve ser um GeoJSON Point com coordenadas [longitude, latitude] válidas'
-    };
-  }
-
   const sebo = {
     nome: nome.trim(),
     email: email.trim().toLowerCase(),
@@ -204,6 +179,34 @@ export const validarCadastroSebo = (body = {}, emailAutenticado) => {
     )
   };
 
-  if (geocode !== undefined) sebo.geocode = geocode;
   return { sebo };
+};
+
+export const validarAtualizacaoSebo = (body = {}, perfilAtual) => {
+  if (!body || typeof body !== 'object' || Array.isArray(body)) {
+    return { erro: 'O body deve ser um objeto JSON' };
+  }
+
+  const camposPermitidos = new Set(['nome', 'telefone', 'endereco', 'horario_funcionamento']);
+  const campoInvalido = Object.keys(body).find(campo => !camposPermitidos.has(campo));
+  if (campoInvalido) return { erro: `Campo não permitido: ${campoInvalido}` };
+  if (Object.keys(body).length === 0) return { erro: 'Informe ao menos um campo para atualizar' };
+
+  const resultado = validarCadastroSebo({
+    nome: Object.hasOwn(body, 'nome') ? body.nome : perfilAtual.nome,
+    email: perfilAtual.email,
+    cnpj: perfilAtual.cnpj,
+    telefone: Object.hasOwn(body, 'telefone') ? body.telefone : perfilAtual.telefone,
+    endereco: Object.hasOwn(body, 'endereco') ? body.endereco : perfilAtual.endereco,
+    horario_funcionamento: Object.hasOwn(body, 'horario_funcionamento')
+      ? body.horario_funcionamento
+      : perfilAtual.horario_funcionamento
+  }, perfilAtual.email);
+  if (resultado.erro) return resultado;
+
+  const atualizacao = {};
+  for (const campo of Object.keys(body)) {
+    atualizacao[campo] = resultado.sebo[campo];
+  }
+  return { atualizacao };
 };

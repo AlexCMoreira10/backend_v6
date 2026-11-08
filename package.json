@@ -1,5 +1,10 @@
 {
   "type": "module",
+  "scripts": {
+    "test:unit:emulator-guard": "env -i PATH=\"$PATH\" HOME=\"$HOME\" FIRESTORE_EMULATOR_HOST=127.0.0.1:8080 FIREBASE_AUTH_EMULATOR_HOST=127.0.0.1:9099 GCLOUD_PROJECT=demo-estante-babel node --test test/unit/emulator-guard.test.js test/unit/emulator-auth.test.js test/unit/emulator-server-isolation.test.js",
+    "test:integration:emulator": "firebase emulators:exec --project demo-estante-babel --only auth,firestore \"node ./test/firestore-emulator/runner.js\"",
+    "serve:test:emulator": "firebase emulators:exec --project demo-estante-babel --only auth,firestore \"node ./test/firestore-emulator/server.js\""
+  },
   "dependencies": {
     "admin-firebase": "^0.0.4",
     "dotenv": "^17.4.2",
@@ -8,6 +13,9 @@
     "firebase": "^12.12.0",
     "firebase-admin": "^10.3.0",
     "qrcode": "^1.5.4"
+  },
+  "devDependencies": {
+    "firebase-tools": "^14.27.0"
   },
   "allowScripts": {
     "@firebase/util@1.15.0": true,

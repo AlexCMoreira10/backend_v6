@@ -5,7 +5,12 @@ import {
 import { criarUrlRastreio, gerarQrCode } from './qrCodeService.js';
 import { validarUrlsFotos } from '../utils/bookPhotoUrls.js';
 import { validarDimensoesEnvio } from '../utils/dimensoesEnvio.js';
-import { copiarGeocodeSebo, copiarGeocodeUsuario } from '../utils/seboGeocode.js';
+import {
+  copiarGeocodeSebo,
+  copiarGeocodeUsuario
+} from '../utils/seboGeocode.js';
+import { buscarSeboPorId, prepararLocalizacaoSebo } from './seboService.js';
+import { criarCriadorLivroSebo as criarCriadorLivroSeboBase } from './seboBookCreationService.js';
 
 export const validarDadosNovoLivro = (dados, exigirDadosSebo = false) => {
   if (!dados || typeof dados !== 'object' || Array.isArray(dados)) {
@@ -55,6 +60,7 @@ export const persistirLivro = async ({
   seboId,
   seboNome,
   geocodeSebo,
+  localizacaoVersaoPerfil,
   geocodeUsuario,
   livroId,
   rascunhoId
@@ -88,31 +94,33 @@ export const persistirLivro = async ({
     qrUrl,
     criadoEm: new Date(),
     ...(geocode ? { geocode } : {}),
-    ...(seboId ? { seboId, seboNome, quantidadeEstoque: dados.quantidadeEstoque } : {})
+    ...(seboId
+      ? {
+          seboId,
+          seboNome,
+          quantidadeEstoque: dados.quantidadeEstoque,
+          localizacaoVersaoPerfil
+        }
+      : {})
   };
   const resultado = await criarLivro(novoLivro, {
     id: livroId,
     rascunhoId,
-    usuarioId
+    usuarioId,
+    seboId,
+    localizacaoVersaoPerfil
   });
   const resposta = { ...resultado, qrCode };
   delete resposta.qrToken;
   return resposta;
 };
 
-export const criarLivroImportadoSebo = async ({ seboId, seboNome, dados, geocodeSebo }) => {
-  const erro = validarDadosNovoLivro(dados, true);
-  if (erro) {
-    const falha = new Error(erro);
-    falha.status = 400;
-    throw falha;
-  }
-  return persistirLivro({
-    dados,
-    usuarioId: seboId,
-    usuarioNome: seboNome,
-    seboId,
-    seboNome,
-    geocodeSebo
-  });
-};
+export const criarCriadorLivroSebo = (opcoes = {}) => criarCriadorLivroSeboBase({
+  buscarSebo: buscarSeboPorId,
+  prepararLocalizacao: prepararLocalizacaoSebo,
+  persistir: persistirLivro,
+  validarDadosNovoLivro,
+  ...opcoes
+});
+
+export const criarLivroImportadoSebo = criarCriadorLivroSebo();

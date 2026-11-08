@@ -8,9 +8,12 @@ import {
   verificarTokenSeboParaTrocaSenha
 } from '../middlewares/authMiddleware.js';
 import {
+  atualizarMeuSebo,
   buscarMeuSebo as buscarMeuSeboController,
-  cadastrarSebo
+  cadastrarSebo,
+  sincronizarLocalizacaoMeuSebo
 } from '../controllers/seboController.js';
+import { criarRouterMeuSebo } from './seboMeRouter.js';
 import {
   autenticarSubconta,
   atualizarSubconta,
@@ -64,7 +67,13 @@ const interpretarPlanilhaLivros = (req, res, next) => {
 router.post('/sebos/cadastro', verificarToken, cadastrarSebo);
 router.post('/sebos/subcontas/login', autenticarSubconta);
 router.get('/sebos/sessao', verificarTokenSeboParaTrocaSenha, buscarMinhaSessao);
-router.get('/sebos/me', verificarTokenSebo, buscarMeuSeboController);
+router.use(criarRouterMeuSebo({
+  verificarTokenSebo,
+  exigirGestorSebo,
+  buscarMeuSebo: buscarMeuSeboController,
+  atualizarMeuSebo,
+  sincronizarLocalizacaoMeuSebo
+}));
 router.get(
   '/sebos/livros',
   verificarTokenSebo,

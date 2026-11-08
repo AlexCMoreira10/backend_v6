@@ -55,9 +55,7 @@ export const importarAnunciosEmMassa = async (req, res) => {
         const dados = normalizarLinhaImportacaoLivro(linha.valores);
         const livro = await criarLivroImportadoSebo({
           seboId: req.seboId,
-          seboNome: sebo.nome,
-          dados,
-          geocodeSebo: sebo.geocode
+          dados
         });
         resultados.push({
           numeroLinha: linha.numeroLinha,
