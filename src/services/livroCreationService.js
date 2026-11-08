@@ -55,7 +55,9 @@ export const persistirLivro = async ({
   seboId,
   seboNome,
   geocodeSebo,
-  geocodeUsuario
+  geocodeUsuario,
+  livroId,
+  rascunhoId
 }) => {
   const geocode = seboId
     ? copiarGeocodeSebo(geocodeSebo)
@@ -88,7 +90,11 @@ export const persistirLivro = async ({
     ...(geocode ? { geocode } : {}),
     ...(seboId ? { seboId, seboNome, quantidadeEstoque: dados.quantidadeEstoque } : {})
   };
-  const resultado = await criarLivro(novoLivro);
+  const resultado = await criarLivro(novoLivro, {
+    id: livroId,
+    rascunhoId,
+    usuarioId
+  });
   const resposta = { ...resultado, qrCode };
   delete resposta.qrToken;
   return resposta;

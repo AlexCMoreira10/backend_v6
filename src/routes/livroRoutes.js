@@ -2,6 +2,10 @@ import express from 'express';
 import { verificarToken } from '../middlewares/authMiddleware.js';
 import {
   criarLivroController,
+  publicarRascunhoLivroController,
+  criarRascunhoImagensLivroController,
+  descartarRascunhoLivroController,
+  limparRascunhosExpiradosController,
   listarLivrosController,
   atualizarLivroController,
   deletarLivroController,
@@ -20,10 +24,21 @@ import {
 
 const router = express.Router();
 
+router.get('/jobs/limpar-rascunhos-livro', limparRascunhosExpiradosController);
 router.get('/livros/rastreio/:token', buscarRastreioController);
 router.post('/livros/rastreio/:token/aquisicao', verificarToken, solicitarAquisicaoController);
 router.get('/me/estante', verificarToken, listarEstanteController);
 router.put('/me/estante/:id/estado', verificarToken, atualizarEstadoAcervoController);
+router.post('/livros/rascunhos', verificarToken, criarLivroController);
+router.post('/livros/rascunhos/:id/publicar', verificarToken, publicarRascunhoLivroController);
+router.delete('/livros/rascunhos/:draftId', verificarToken, descartarRascunhoLivroController);
+router.post('/livros/:id/rascunhos-imagens', verificarToken, criarRascunhoImagensLivroController);
+router.delete(
+  '/livros/:id/rascunhos-imagens/:draftId',
+  verificarToken,
+  descartarRascunhoLivroController
+);
+// Compatibilidade: a criação direta também resulta em rascunho, nunca em anúncio público.
 router.post('/livros', verificarToken, criarLivroController);
 router.get('/livros', listarLivrosController);
 router.get('/livros/:id', verificarToken, listarLivrosController); // Detalhes do livro por ID (reutiliza o mesmo controller)

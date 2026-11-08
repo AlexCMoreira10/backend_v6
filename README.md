@@ -4,7 +4,9 @@
 
 Crie um arquivo `.env` na raiz usando `.env.example` como referência e preencha `FIREBASE_PROJECT_ID`, `FIREBASE_CLIENT_EMAIL` e `FIREBASE_PRIVATE_KEY` com os dados da conta de serviço do Firebase. Na chave privada, mantenha as quebras de linha como `\n`. Configure `PUBLIC_APP_URL` com a origem pública do frontend (sem `/api`); em produção, configure essa variável também nas variáveis de ambiente do projeto da Vercel.
 
-Para salvar as imagens de livros, configure `FIREBASE_STORAGE_BUCKET` com o nome do bucket do Firebase Storage (por exemplo, `babel-5dcbd.firebasestorage.app`) localmente e na Vercel. A conta de serviço usada pelo backend precisa ter permissão de criar e excluir objetos nesse bucket.
+Para salvar as imagens de livros, configure `FIREBASE_STORAGE_BUCKET` com o nome do bucket do Firebase Storage (por exemplo, `babel-5dcbd.firebasestorage.app`) localmente e na Vercel. A conta de serviço usada pelo backend precisa poder listar, ler metadados/conteúdo, criar e excluir objetos nesse bucket.
+
+Configure também `CRON_SECRET` localmente e na Vercel para autenticar a tarefa diária que remove uploads de rascunhos expirados. Rascunhos e operações de edição de imagens expiram após 24 horas; a limpeza remove somente objetos marcados com o identificador daquela operação.
 
 Para proteger os CPFs dos colaboradores, gere uma chave dedicada com `openssl rand -base64 32` e configure o resultado como `SUBACCOUNT_ENCRYPTION_KEY` no `.env` local e nas variáveis do projeto Vercel. Mantenha essa chave persistente e faça backup seguro: ela protege CPFs criptografados e seus índices de unicidade. Não troque a chave sem migrar os CPFs e índices existentes.
 
@@ -45,6 +47,20 @@ Para produção, defina `MELHOR_ENVIO_BASE_URL=https://melhorenvio.com.br` e con
 ---
 
 ## 3. Rotas da API
+
+### Publicação de livros com imagens
+
+- `POST /api/livros/rascunhos` exige autenticação Firebase, recebe os dados do anúncio e `fotosExternas` (lista opcional de URLs HTTPS), e retorna `202` com o ID do rascunho/livro. O anúncio permanece fora da coleção pública até ser finalizado.
+- O endpoint legado `POST /api/livros` agora cria um rascunho e não publica diretamente.
+- Faça upload de arquivos para `livros/{uid}/{livroId}/{nomeArquivo}` pelo Firebase Storage, informando o identificador do rascunho como metadata `uploadId`. São aceitos JPEG, PNG e WebP de até 5 MB.
+- `POST /api/livros/rascunhos/:id/publicar` exige autenticação e recebe `{ "fotos": ["URL externa HTTPS", "URL de download do Storage"] }`. O backend valida propriedade, bucket, caminho, metadados, MIME e tamanho antes de criar o anúncio, a estante e o histórico de posse em uma transação.
+- `DELETE /api/livros/rascunhos/:draftId` descarta um rascunho do próprio usuário e apaga apenas objetos associados à operação. A resposta é `204` quando a limpeza termina; falhas mantêm o rascunho pendente para nova tentativa.
+- `POST /api/livros/:id/rascunhos-imagens` inicia uma operação temporária de edição após verificar o proprietário atual.
+- `PUT /api/livros/:id` pode receber `imageDraftId` junto com a lista final `fotos`. As referências são atualizadas e a operação é consumida atomicamente após validar a propriedade e os novos uploads. URLs existentes que não mudaram são preservadas, inclusive referências legadas.
+- `DELETE /api/livros/:id/rascunhos-imagens/:draftId` cancela uma operação de edição e remove somente os uploads temporários dela. Remoções de imagens já associadas ao livro devem ocorrer no cliente somente depois de o `PUT` ser confirmado, e apenas para objetos do Storage pertencentes ao usuário autenticado. URLs externas nunca são apagadas pelo Storage.
+- `GET /api/jobs/limpar-rascunhos-livro` é reservado à tarefa agendada da Vercel e exige `Authorization: Bearer $CRON_SECRET`. A execução diária remove uploads abandonados após 24 horas; falhas retornam erro para que sejam repetidas na próxima execução.
+
+URLs externas novas devem usar HTTPS e não podem conter credenciais. O backend não baixa nem exclui essas imagens. Referências antigas continuam aceitas durante a edição sem migração; referências antigas de Storage só são mantidas quando não são alteradas.
 
 ### Cadastro de usuário
 

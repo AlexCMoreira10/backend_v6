@@ -1,3 +1,4 @@
+import { timingSafeEqual } from 'node:crypto';
 import { buscarSeboPorId } from '../services/seboService.js';
 import {
   criarLivroImportadoSebo,
@@ -22,25 +23,161 @@ import { gerarQrCode } from '../services/qrCodeService.js';
 import { validarDimensoesEnvio } from '../utils/dimensoesEnvio.js';
 import { buscarUsuarioPorId } from '../services/userService.js';
 import { removerGeolocalizacaoLivro } from '../utils/bookLocationPrivacy.js';
+import {
+  buscarRascunhoLivro,
+  criarRascunhoImagensLivro,
+  criarRascunhoLivro,
+  descartarRascunhoLivro,
+  limparRascunhosExpirados,
+  validarFotosLivro
+} from '../services/livroDraftService.js';
+
 export const criarLivroController = async (req, res) => {
   const erro = validarDadosNovoLivro(req.body);
   if (erro) return res.status(400).json({ erro });
   try {
     const perfil = await buscarUsuarioPorId(req.usuario.uid);
-    const dadosLivro = { ...req.body };
+    const fotosExternas = req.body.fotosExternas ?? req.body.fotos ?? [];
+    const dadosLivro = { ...req.body, fotos: [] };
+    delete dadosLivro.fotosExternas;
     if (!dadosLivro.localizacao?.trim() && perfil?.endereco?.cep) {
       dadosLivro.localizacao = perfil.endereco.cep;
     }
-    const livro = await persistirLivro({
+    const rascunho = await criarRascunhoLivro({
       dados: dadosLivro,
+      fotosExternas,
       usuarioId: req.usuario.uid,
       usuarioNome: req.usuario.name || '',
       geocodeUsuario: perfil?.geocode
     });
+    return res.status(202).json(rascunho);
+  } catch (error) {
+    if (error.status) return res.status(error.status).json({ erro: error.message });
+    console.error(error);
+    return res.status(500).json({ erro: 'Erro ao criar rascunho do livro' });
+  }
+};
+
+export const publicarRascunhoLivroController = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const fotos = req.body?.fotos;
+    if (!Array.isArray(fotos)) {
+      return res.status(400).json({ erro: 'Envie a lista final de imagens do anúncio' });
+    }
+
+    const rascunho = await buscarRascunhoLivro(id);
+    if (!rascunho) {
+      const livroExistente = await buscarLivroPorId(id);
+      if (livroExistente?.usuarioId === req.usuario.uid &&
+          JSON.stringify(livroExistente.fotos || []) === JSON.stringify(fotos)) {
+        return res.json({
+          ...livroExistente,
+          qrCode: await gerarQrCode(livroExistente.qrUrl)
+        });
+      }
+      return res.status(404).json({ erro: 'Rascunho não encontrado ou expirado' });
+    }
+    if (rascunho.usuarioId !== req.usuario.uid) {
+      return res.status(403).json({ erro: 'Você não tem permissão para publicar este rascunho' });
+    }
+    if (rascunho.tipoRascunho !== 'criacao' || rascunho.estado !== 'enviando') {
+      return res.status(409).json({ erro: 'Este rascunho não pode ser publicado' });
+    }
+    if (rascunho.expiraEm.toDate() <= new Date()) {
+      return res.status(410).json({ erro: 'O rascunho expirou; inicie a publicação novamente' });
+    }
+
+    const fotosExternas = rascunho.fotosExternas || [];
+    if (fotosExternas.some((foto) => !fotos.includes(foto))) {
+      return res.status(400).json({ erro: 'A publicação deve manter as URLs externas do rascunho' });
+    }
+    await validarFotosLivro({
+      fotos,
+      usuarioId: req.usuario.uid,
+      livroId: rascunho.livroId,
+      uploadId: id,
+      fotosExistentes: fotosExternas
+    });
+
+    const livro = await persistirLivro({
+      dados: { ...rascunho.dados, fotos },
+      usuarioId: req.usuario.uid,
+      usuarioNome: rascunho.usuarioNome || req.usuario.name || '',
+      geocodeUsuario: rascunho.dados.geocode,
+      livroId: rascunho.livroId,
+      rascunhoId: id
+    });
     return res.status(201).json(livro);
   } catch (error) {
-    console.error(error);
-    return res.status(500).json({ erro: 'Erro ao criar livro' });
+    if (error.status) return res.status(error.status).json({ erro: error.message });
+    console.error('Erro ao publicar rascunho do livro:', error);
+    return res.status(500).json({ erro: 'Não foi possível publicar o livro' });
+  }
+};
+
+export const criarRascunhoImagensLivroController = async (req, res) => {
+  try {
+    const rascunho = await criarRascunhoImagensLivro({
+      livroId: req.params.id,
+      usuarioId: req.usuario.uid
+    });
+    return res.status(201).json(rascunho);
+  } catch (error) {
+    if (error.status) return res.status(error.status).json({ erro: error.message });
+    console.error('Erro ao iniciar atualização das imagens do livro:', error);
+    return res.status(500).json({ erro: 'Não foi possível preparar as novas imagens' });
+  }
+};
+
+export const descartarRascunhoLivroController = async (req, res) => {
+  try {
+    const { id, draftId } = req.params;
+    const rascunhoId = draftId || id;
+    const rascunho = await buscarRascunhoLivro(rascunhoId);
+    if (!rascunho) return res.status(204).end();
+    if (rascunho.usuarioId !== req.usuario.uid ||
+        (id && (rascunho.tipoRascunho !== 'edicao' || rascunho.livroId !== id)) ||
+        (draftId && rascunho.tipoRascunho !== 'criacao')) {
+      return res.status(403).json({ erro: 'Você não tem permissão para descartar este rascunho' });
+    }
+
+    await descartarRascunhoLivro(rascunhoId, req.usuario.uid);
+    return res.status(204).end();
+  } catch (error) {
+    if (error.status) return res.status(error.status).json({ erro: error.message });
+    console.error('Erro ao descartar rascunho do livro:', error);
+    return res.status(500).json({ erro: error.message || 'Não foi possível descartar o rascunho' });
+  }
+};
+
+export const limparRascunhosExpiradosController = async (req, res) => {
+  const secret = process.env.CRON_SECRET;
+  const autorizacao = req.headers.authorization || '';
+  const recebido = autorizacao.startsWith('Bearer ') ? autorizacao.slice(7) : '';
+  if (!secret) {
+    return res.status(503).json({ erro: 'CRON_SECRET não está configurado' });
+  }
+
+  const recebidoBuffer = Buffer.from(recebido);
+  const esperadoBuffer = Buffer.from(secret);
+  if (recebidoBuffer.length !== esperadoBuffer.length ||
+      !timingSafeEqual(recebidoBuffer, esperadoBuffer)) {
+    return res.status(401).json({ erro: 'Não autorizado' });
+  }
+
+  try {
+    const resultado = await limparRascunhosExpirados();
+    if (resultado.falhas) {
+      return res.status(500).json({
+        erro: 'Alguns uploads expirados não puderam ser limpos',
+        ...resultado
+      });
+    }
+    return res.json(resultado);
+  } catch (error) {
+    console.error('Erro na limpeza agendada de rascunhos:', error);
+    return res.status(500).json({ erro: 'Não foi possível limpar os rascunhos expirados' });
   }
 };
 
@@ -174,6 +311,7 @@ export const atualizarLivroController = async (req, res) => {
       'dimensoes',
       'trocas',
       'fotos',
+      'imageDraftId',
       'localizacao',
       'status'
     ];
@@ -194,6 +332,16 @@ export const atualizarLivroController = async (req, res) => {
     const dados = Object.fromEntries(
       Object.entries(body).filter(([campo]) => camposEditaveis.includes(campo))
     );
+    const imageDraftId = typeof body.imageDraftId === 'string'
+      ? body.imageDraftId
+      : null;
+    delete dados.imageDraftId;
+    if (body.imageDraftId !== undefined &&
+        (!imageDraftId || !Object.hasOwn(body, 'fotos'))) {
+      return res.status(400).json({
+        erro: 'Um rascunho de imagens exige a lista final de fotos do anúncio'
+      });
+    }
     if (Object.keys(dados).length === 0) {
       return res.status(400).json({ erro: 'Informe ao menos um campo válido para atualizar' });
     }
@@ -218,6 +366,20 @@ export const atualizarLivroController = async (req, res) => {
     if (livro.transferenciaPendente) {
       return res.status(409).json({
         erro: 'Conclua ou recuse a aquisição pendente antes de editar este livro'
+      });
+    }
+    if (Object.hasOwn(body, 'fotos')) {
+      const fotosExistentes = Array.isArray(livro.fotos)
+        ? livro.fotos
+        : typeof livro.fotos === 'string'
+          ? livro.fotos.split(',').map((foto) => foto.trim()).filter(Boolean)
+          : [];
+      await validarFotosLivro({
+        fotos: dados.fotos,
+        usuarioId: req.usuario.uid,
+        livroId: id,
+        uploadId: imageDraftId,
+        fotosExistentes
       });
     }
 
@@ -260,7 +422,7 @@ export const atualizarLivroController = async (req, res) => {
     }
 
     // 🧱 Atualiza
-    const resultado = await atualizarLivro(id, dados, req.usuario.uid);
+    const resultado = await atualizarLivro(id, dados, req.usuario.uid, { imageDraftId });
 
     return res.json(resultado);
 
