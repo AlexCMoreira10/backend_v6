@@ -12,6 +12,7 @@ import {
 import {
   criarLivro,
   listarLivros,
+  listarLivrosProximos,
   buscarLivroPorId,
   atualizarLivro,
   listarLivrosPorUsuario,
@@ -40,9 +41,7 @@ export const criarLivroController = async (req, res) => {
     const fotosExternas = req.body.fotosExternas ?? req.body.fotos ?? [];
     const dadosLivro = { ...req.body, fotos: [] };
     delete dadosLivro.fotosExternas;
-    if (!dadosLivro.localizacao?.trim() && perfil?.endereco?.cep) {
-      dadosLivro.localizacao = perfil.endereco.cep;
-    }
+    dadosLivro.localizacao = perfil?.endereco?.cep || '';
     const rascunho = await criarRascunhoLivro({
       dados: dadosLivro,
       fotosExternas,
@@ -273,7 +272,7 @@ export const listarLivrosController = async (req, res) => {
       delete livro.qrToken;
       if (livro.usuarioId !== req.usuario.uid) {
         delete livro.transferenciaPendente;
-        delete livro.geocode;
+        return res.json(removerGeolocalizacaoLivro(livro));
       }
       return res.json(livro);
     }
@@ -291,6 +290,66 @@ export const listarLivrosController = async (req, res) => {
     return res.status(500).json({
       erro: 'Erro ao listar livros'
     });
+  }
+};
+
+export const listarLivrosProximosController = async (req, res) => {
+  const body = req.body;
+  if (!body || typeof body !== 'object' || Array.isArray(body)) {
+    return res.status(400).json({ erro: 'O body deve ser um objeto JSON' });
+  }
+  const camposPermitidos = new Set([
+    'latitude',
+    'longitude',
+    'raioKm',
+    'tipo',
+    'titulo',
+    'page',
+    'limit'
+  ]);
+  const campoInvalido = Object.keys(body).find(campo => !camposPermitidos.has(campo));
+  if (campoInvalido) {
+    return res.status(400).json({ erro: `Campo não permitido: ${campoInvalido}` });
+  }
+  if (
+    !Number.isFinite(body.latitude) ||
+    body.latitude < -90 ||
+    body.latitude > 90 ||
+    !Number.isFinite(body.longitude) ||
+    body.longitude < -180 ||
+    body.longitude > 180
+  ) {
+    return res.status(400).json({ erro: 'Informe latitude e longitude válidas' });
+  }
+  if (![3, 5, 10].includes(Number(body.raioKm))) {
+    return res.status(400).json({ erro: 'O raio deve ser 3, 5 ou 10 km' });
+  }
+  if (body.tipo && !['troca', 'doacao', 'venda'].includes(body.tipo)) {
+    return res.status(400).json({ erro: 'Tipo de anúncio inválido' });
+  }
+  if (body.titulo !== undefined &&
+      (typeof body.titulo !== 'string' || body.titulo.length > 200)) {
+    return res.status(400).json({ erro: 'O título da busca deve ter até 200 caracteres' });
+  }
+  if (body.page !== undefined && (!Number.isInteger(Number(body.page)) || Number(body.page) < 1)) {
+    return res.status(400).json({ erro: 'A página deve ser um inteiro positivo' });
+  }
+  if (body.limit !== undefined && (!Number.isInteger(Number(body.limit)) || Number(body.limit) < 1 || Number(body.limit) > 100)) {
+    return res.status(400).json({ erro: 'O limite deve ser um inteiro entre 1 e 100' });
+  }
+
+  try {
+    const resultado = await listarLivrosProximos(body);
+    return res.json({
+      ...resultado,
+      dados: resultado.dados.map(livro => ({
+        ...removerGeolocalizacaoLivro(livro),
+        distanciaKm: livro.distanciaKm
+      }))
+    });
+  } catch (error) {
+    console.error('Erro ao buscar livros próximos:', error);
+    return res.status(500).json({ erro: 'Não foi possível buscar livros próximos' });
   }
 };
 

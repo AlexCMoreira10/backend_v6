@@ -8,6 +8,8 @@ Para salvar as imagens de livros, configure `FIREBASE_STORAGE_BUCKET` com o nome
 
 Configure também `CRON_SECRET` localmente e na Vercel para autenticar a tarefa diária que remove uploads de rascunhos expirados. Rascunhos e operações de edição de imagens expiram após 24 horas; a limpeza remove somente objetos marcados com o identificador daquela operação.
 
+Para geocodificar endereços de usuários quando forem alterados, configure `GOOGLE_GEOCODING_API_KEY` no backend local e na Vercel e habilite a Geocoding API no projeto Google Cloud. Restrinja a chave à API necessária e mantenha-a somente no servidor. O serviço recebe rua, número, bairro, cidade, estado e CEP do perfil; se a geocodificação não estiver configurada ou não retornar uma posição confiável, o backend informa o usuário e remove as coordenadas antigas dos anúncios.
+
 Para proteger os CPFs dos colaboradores, gere uma chave dedicada com `openssl rand -base64 32` e configure o resultado como `SUBACCOUNT_ENCRYPTION_KEY` no `.env` local e nas variáveis do projeto Vercel. Mantenha essa chave persistente e faça backup seguro: ela protege CPFs criptografados e seus índices de unicidade. Não troque a chave sem migrar os CPFs e índices existentes.
 
 Este repositório inclui `vercel.json` para publicar o servidor Express como função da Vercel. Para que a API hospedada gere QR Codes e consulte o histórico, o projeto da Vercel precisa estar conectado a este repositório (`AlexCMoreira10/backend_v6`) e usar um deploy que inclua o serviço de QR Code. Configure `FIREBASE_PROJECT_ID`, `FIREBASE_CLIENT_EMAIL`, `FIREBASE_PRIVATE_KEY` e `PUBLIC_APP_URL` nas variáveis de ambiente da Vercel e faça um novo deploy. `PUBLIC_APP_URL` deve ser a URL HTTPS do frontend, não a URL da API.
@@ -50,7 +52,7 @@ Para produção, defina `MELHOR_ENVIO_BASE_URL=https://melhorenvio.com.br` e con
 
 ### Publicação de livros com imagens
 
-- `POST /api/livros/rascunhos` exige autenticação Firebase, recebe os dados do anúncio e `fotosExternas` (lista opcional de URLs HTTPS), e retorna `202` com o ID do rascunho/livro. O anúncio permanece fora da coleção pública até ser finalizado.
+- `POST /api/livros/rascunhos` exige autenticação Firebase, recebe os dados do anúncio e `fotosExternas` (lista opcional de URLs HTTPS), e retorna `202` com o ID do rascunho/livro. O CEP de origem e a geolocalização do anúncio são obtidos do perfil associado ao token; valores de localização enviados pelo cliente não substituem o CEP do perfil. O anúncio permanece fora da coleção pública até ser finalizado.
 - O endpoint legado `POST /api/livros` agora cria um rascunho e não publica diretamente.
 - Faça upload de arquivos para `livros/{uid}/{livroId}/{nomeArquivo}` pelo Firebase Storage, informando o identificador do rascunho como metadata `uploadId`. São aceitos JPEG, PNG e WebP de até 5 MB.
 - `POST /api/livros/rascunhos/:id/publicar` exige autenticação e recebe `{ "fotos": ["URL externa HTTPS", "URL de download do Storage"] }`. O backend valida propriedade, bucket, caminho, metadados, MIME e tamanho antes de criar o anúncio, a estante e o histórico de posse em uma transação.
@@ -151,9 +153,49 @@ Exemplo de body:
 - Método: `PUT`
 - Endpoint: `{{baseUrl}}/api/me`
 - Autenticação: exige o Firebase ID token no cabeçalho `Authorization: Bearer <token>`.
-- Descrição: atualiza nome, telefones, data de nascimento, endereço e localização aproximada do usuário identificado pelo token. O cliente não pode alterar `id`, `_id`, `uid` ou `email`.
+- Descrição: atualiza nome, telefones, data de nascimento, endereço e localização aproximada do usuário identificado pelo token. Ao mudar rua, número, bairro, cidade, estado ou CEP, o backend tenta geocodificar o novo endereço (não usa automaticamente o GPS do aparelho), atualiza os anúncios pertencentes ao UID e remove coordenadas anteriores se não houver uma geocodificação confiável. Alterações apenas em dados não relacionados à localização não sincronizam os anúncios. O cliente não pode alterar `id`, `_id`, `uid` ou `email`.
 - Body: use os campos `nome`, `telefone` (array de strings) e `data_nascimento` (`YYYY-MM-DD`). `endereco` é um objeto opcional com `rua`, `numero`, `complemento`, `bairro`, `cidade`, `estado` e `cep`; `geocode` é opcional e aceita `null` para limpar a localização ou um GeoJSON Point com coordenadas `[longitude, latitude]`.
-- Respostas: `200 OK` após a atualização, `400 Bad Request` para campos inválidos ou tentativa de alterar dados imutáveis, `401 Unauthorized` para token inválido/ausente, `404 Not Found` quando não há perfil associado ao UID e `500 Internal Server Error` quando a atualização falha.
+- Respostas: `200 OK` após a atualização, podendo incluir `avisoLocalizacao` ou `sincronizacaoLocalizacao.status: "pendente"` se a localização não puder ser geocodificada ou sincronizada; `400 Bad Request` para campos inválidos ou tentativa de alterar dados imutáveis, `401 Unauthorized` para token inválido/ausente, `404 Not Found` quando não há perfil associado ao UID e `500 Internal Server Error` quando a atualização falha.
+
+### Repetir sincronização da localização dos anúncios
+
+- Método: `POST`
+- Endpoint: `{{baseUrl}}/api/me/localizacao/sincronizar`
+- Autenticação: exige o Firebase ID token; a sincronização só consulta anúncios cujo `usuarioId` corresponda ao UID autenticado e ignora anúncios de sebos.
+- Body: vazio (`{}`).
+- Uso: repetir uma sincronização interrompida. A busca por proximidade exclui anúncios cuja versão de localização não corresponda à versão atual do perfil até a sincronização terminar.
+
+### Buscar livros próximos
+
+- Método: `POST`
+- Endpoint: `{{baseUrl}}/api/livros/proximos`
+- Autenticação: não exige token; a localização do visitante só é usada durante a requisição e não é gravada.
+- Body: `latitude`, `longitude`, `raioKm` (`3`, `5` ou `10`), com `tipo` (`troca`, `doacao` ou `venda`) e `titulo` opcionais; `page` e `limit` controlam a paginação.
+- A resposta aplica filtros, raio e ordenação Haversine antes da paginação. Cada livro inclui somente `distanciaKm` arredondada a uma casa decimal; não retorna `geocode`, CEP ou endereço residencial.
+- Anúncios sem coordenadas válidas e anúncios de proprietários com sincronização pendente não aparecem. A busca normal `GET /api/livros` permanece independente.
+- Custo: nesta implementação inicial o backend lê os anúncios da coleção e, para anúncios de usuários, consulta os perfis distintos para verificar a versão sincronizada. Monitore leituras e latência; migre para índice geohash quando o catálogo tornar essa varredura cara ou lenta.
+
+### Migração de localização dos anúncios
+
+A migração é manual e **não é executada pela aplicação**. Configure as credenciais Firebase no `.env` e rode primeiro o modo somente leitura:
+
+```bash
+node scripts/migrateBookLocations.js
+```
+
+O comando informa quantos anúncios serão afetados. Ele preserva anúncios de sebos, anúncios antigos sem coordenadas e anúncios sem perfil associado. Após revisar o relatório, a aplicação real exige a opção explícita `--apply`:
+
+```bash
+node scripts/migrateBookLocations.js --apply
+```
+
+Antes de qualquer alteração, `--apply` grava um backup dos campos geográficos/localização em `migration-backups/` (ignorado pelo Git). Se necessário, restaure os campos anteriores com:
+
+```bash
+node scripts/migrateBookLocations.js --restore caminho/do/backup.json
+```
+
+O backup contém os dados de localização anteriores; guarde-o com acesso restrito. A restauração reverte somente os campos modificados pela migração. Não execute `--apply` sem revisar o dry-run e manter o backup gerado.
 
 ### 3.1 Listar livros (com paginação e filtros)
 

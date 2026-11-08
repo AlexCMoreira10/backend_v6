@@ -7,6 +7,7 @@ import {
   descartarRascunhoLivroController,
   limparRascunhosExpiradosController,
   listarLivrosController,
+  listarLivrosProximosController,
   atualizarLivroController,
   deletarLivroController,
   listarMeusLivrosController,
@@ -31,6 +32,7 @@ router.get('/me/estante', verificarToken, listarEstanteController);
 router.put('/me/estante/:id/estado', verificarToken, atualizarEstadoAcervoController);
 router.post('/livros/rascunhos', verificarToken, criarLivroController);
 router.post('/livros/rascunhos/:id/publicar', verificarToken, publicarRascunhoLivroController);
+router.post('/livros/proximos', listarLivrosProximosController);
 router.delete('/livros/rascunhos/:draftId', verificarToken, descartarRascunhoLivroController);
 router.post('/livros/:id/rascunhos-imagens', verificarToken, criarRascunhoImagensLivroController);
 router.delete(

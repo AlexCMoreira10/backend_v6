@@ -1,7 +1,8 @@
 import {
   cadastrarUsuario as cadastrarUsuarioService,
   atualizarPerfilUsuario,
-  salvarUsuarioSeNaoExistir
+  salvarUsuarioSeNaoExistir,
+  sincronizarLocalizacaoAnuncios
 } from '../services/userService.js';
 import { validarAtualizacaoPerfil } from '../utils/profileValidation.js';
 
@@ -173,5 +174,20 @@ export const atualizarPerfil = async (req, res) => {
   } catch (error) {
     console.error('Erro ao atualizar perfil do usuário:', error);
     return res.status(500).json({ erro: 'Erro ao atualizar perfil do usuário' });
+  }
+};
+
+export const sincronizarLocalizacaoPerfil = async (req, res) => {
+  try {
+    const resultado = await sincronizarLocalizacaoAnuncios(req.usuario.uid);
+    if (!resultado) {
+      return res.status(404).json({ erro: 'Perfil de usuário não encontrado' });
+    }
+    return res.json(resultado);
+  } catch (error) {
+    console.error('Erro ao repetir sincronização da localização:', error);
+    return res.status(500).json({
+      erro: 'A sincronização continua pendente. Tente novamente mais tarde.'
+    });
   }
 };

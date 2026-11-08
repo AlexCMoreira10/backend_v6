@@ -1,5 +1,9 @@
 import { db } from '../config/firebase.js';
 import { estante, formatarItemEstante } from './estanteService.js';
+import {
+  filtrarLivrosProximos,
+  obterCoordenadasGeocode
+} from '../utils/geoDistance.js';
 
 const collection = db.collection('livros');
 const paraData = valor => (
@@ -194,6 +198,55 @@ export const listarLivros = async (filtros) => {
     totalPaginas: Math.ceil(total / limit),
     dados: livros.slice(start, end)
   };
+};
+
+export const listarLivrosProximos = async ({
+  latitude,
+  longitude,
+  raioKm,
+  tipo,
+  titulo,
+  page,
+  limit
+}) => {
+  let query = collection;
+  if (tipo) query = query.where('tipo', '==', tipo);
+
+  const snapshot = await query.get();
+  const livros = snapshot.docs.map(doc => {
+    const dados = doc.data();
+    delete dados.qrToken;
+    delete dados.transferenciaPendente;
+    return { id: doc.id, ...dados };
+  });
+  const candidatos = livros.filter(livro => {
+    if (!obterCoordenadasGeocode(livro.geocode) ||
+        livro.status === 'na_estante' ||
+        ['roubado', 'perdido'].includes(livro.estadoAcervo)) {
+      return false;
+    }
+    if (tipo && livro.tipo !== tipo) return false;
+    return !titulo || String(livro.titulo || '').toLocaleLowerCase('pt-BR')
+      .includes(String(titulo).trim().toLocaleLowerCase('pt-BR'));
+  });
+  const proprietarios = [...new Set(
+    candidatos.filter(livro => !livro.seboId && livro.usuarioId).map(livro => livro.usuarioId)
+  )];
+  const perfis = await Promise.all(proprietarios.map(async uid => {
+    const perfil = await db.collection('users').doc(uid).get();
+    return [uid, perfil.exists ? perfil.data() : null];
+  }));
+  const perfisPorId = new Map(perfis);
+
+  return filtrarLivrosProximos({
+    livros,
+    origem: { latitude, longitude },
+    raioKm,
+    perfisPorId,
+    filtros: { tipo, titulo },
+    page,
+    limit
+  });
 };
 
 export const buscarLivroPorId = async (id) => {
