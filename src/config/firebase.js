@@ -16,6 +16,7 @@ if (!projectId || !clientEmail || !privateKey) {
 admin.initializeApp({
   credential: admin.credential.cert({ projectId, clientEmail, privateKey }),
 });
+console.info('[Firebase Admin] Conta configurada:', clientEmail);
 
 // 🔥 Exporta o admin completo
 export default admin;
