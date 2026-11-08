@@ -146,6 +146,15 @@ Exemplo de body:
   - `409 Conflict` se o e-mail já estiver cadastrado
   - `500 Internal Server Error` se ocorrer um erro ao criar a conta ou salvar o perfil
 
+### Atualizar perfil do usuário autenticado
+
+- Método: `PUT`
+- Endpoint: `{{baseUrl}}/api/me`
+- Autenticação: exige o Firebase ID token no cabeçalho `Authorization: Bearer <token>`.
+- Descrição: atualiza nome, telefones, data de nascimento, endereço e localização aproximada do usuário identificado pelo token. O cliente não pode alterar `id`, `_id`, `uid` ou `email`.
+- Body: use os campos `nome`, `telefone` (array de strings) e `data_nascimento` (`YYYY-MM-DD`). `endereco` é um objeto opcional com `rua`, `numero`, `complemento`, `bairro`, `cidade`, `estado` e `cep`; `geocode` é opcional e aceita `null` para limpar a localização ou um GeoJSON Point com coordenadas `[longitude, latitude]`.
+- Respostas: `200 OK` após a atualização, `400 Bad Request` para campos inválidos ou tentativa de alterar dados imutáveis, `401 Unauthorized` para token inválido/ausente, `404 Not Found` quando não há perfil associado ao UID e `500 Internal Server Error` quando a atualização falha.
+
 ### 3.1 Listar livros (com paginação e filtros)
 
 - Método: `GET`

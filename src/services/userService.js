@@ -78,3 +78,21 @@ export const buscarUsuarioPorId = async (uid) => {
     ...doc.data()
   };
 };
+
+export const atualizarPerfilUsuario = async (uid, dadosPerfil) => {
+  const docRef = collection.doc(uid);
+  const doc = await docRef.get();
+
+  if (!doc.exists) return null;
+
+  await admin.auth().updateUser(uid, { displayName: dadosPerfil.nome });
+  const atualizadoEm = new Date();
+  await docRef.update({ ...dadosPerfil, atualizadoEm });
+
+  return {
+    id: doc.id,
+    ...doc.data(),
+    ...dadosPerfil,
+    atualizadoEm
+  };
+};

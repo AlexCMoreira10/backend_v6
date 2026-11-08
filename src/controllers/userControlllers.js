@@ -1,7 +1,9 @@
 import {
   cadastrarUsuario as cadastrarUsuarioService,
+  atualizarPerfilUsuario,
   salvarUsuarioSeNaoExistir
 } from '../services/userService.js';
+import { validarAtualizacaoPerfil } from '../utils/profileValidation.js';
 
 const EMAIL_VALIDO = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -152,5 +154,24 @@ export const criarOuBuscarUsuario = async (req, res) => {
     res.json(resultado);
   } catch (error) {
     res.status(500).json({ erro: 'Erro ao salvar usuário' });
+  }
+};
+
+export const atualizarPerfil = async (req, res) => {
+  const { atualizacao, erro } = validarAtualizacaoPerfil(req.body);
+  if (erro) {
+    return res.status(400).json({ erro });
+  }
+
+  try {
+    const usuario = await atualizarPerfilUsuario(req.usuario.uid, atualizacao);
+    if (!usuario) {
+      return res.status(404).json({ erro: 'Perfil de usuário não encontrado' });
+    }
+
+    return res.json(usuario);
+  } catch (error) {
+    console.error('Erro ao atualizar perfil do usuário:', error);
+    return res.status(500).json({ erro: 'Erro ao atualizar perfil do usuário' });
   }
 };
