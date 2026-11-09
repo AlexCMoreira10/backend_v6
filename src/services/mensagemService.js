@@ -137,12 +137,22 @@ export const listarConversasDoUsuario = async (idUsuario) => {
     ? await db.getAll(...idsUsuarios.map((id) => db.collection('users').doc(id)))
     : [];
   const usuariosPorId = new Map(
-    usuarios.map((usuario) => [usuario.id, usuario.exists ? usuario.data() : {}])
+    usuarios.filter((u) => u.exists).map((u) => [u.id, u.data()])
+  );
+
+  const idsSemPerfil = idsUsuarios.filter((id) => !usuariosPorId.has(id));
+  const sebosDocs = idsSemPerfil.length
+    ? await db.getAll(...idsSemPerfil.map((id) => db.collection('sebos').doc(id)))
+    : [];
+  const sebosPorId = new Map(
+    sebosDocs.filter((s) => s.exists).map((s) => [s.id, s.data()])
   );
 
   return [...conversas.values()]
     .map(({ idUsuario: outroUsuarioId, ultima_mensagem, mensagens_nao_lidas }) => {
-      const usuario = usuariosPorId.get(outroUsuarioId) ?? {};
+      const usuario = usuariosPorId.get(outroUsuarioId)
+        ?? sebosPorId.get(outroUsuarioId)
+        ?? {};
 
       return {
         outro_participante: {

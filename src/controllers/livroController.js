@@ -1,5 +1,4 @@
 import { timingSafeEqual } from 'node:crypto';
-import { buscarSeboPorId } from '../services/seboService.js';
 import {
   criarLivroImportadoSebo,
   persistirLivro,
@@ -35,6 +34,7 @@ import {
 
 export const criarLivroController = async (req, res) => {
   const erro = validarDadosNovoLivro(req.body);
+  
   if (erro) return res.status(400).json({ erro });
   try {
     const perfil = await buscarUsuarioPorId(req.usuario.uid);
@@ -46,7 +46,7 @@ export const criarLivroController = async (req, res) => {
       dados: dadosLivro,
       fotosExternas,
       usuarioId: req.usuario.uid,
-      usuarioNome: req.usuario.name || '',
+      usuarioNome: perfil?.nome || req.usuario.name || '',
       geocodeUsuario: perfil?.geocode
     });
     return res.status(202).json(rascunho);
@@ -184,16 +184,13 @@ export const criarLivroSeboController = async (req, res) => {
   const erro = validarDadosNovoLivro(req.body, true);
   if (erro) return res.status(400).json({ erro });
   try {
-    const sebo = await buscarSeboPorId(req.seboId);
-    if (!sebo) return res.status(404).json({ erro: 'Cadastro de sebo não encontrado' });
     const livro = await criarLivroImportadoSebo({
       seboId: req.seboId,
-      seboNome: sebo.nome,
-      dados: req.body,
-      geocodeSebo: sebo.geocode
+      dados: req.body
     });
     return res.status(201).json(livro);
   } catch (error) {
+    if (error.status) return res.status(error.status).json({ erro: error.message });
     console.error('Erro ao criar livro para o sebo:', error);
     return res.status(500).json({ erro: 'Erro ao criar livro para o sebo' });
   }
@@ -208,6 +205,10 @@ export const listarLivrosSeboController = async (req, res) => {
         : await garantirQrCodeLivro(livro.id);
       const livroSeguro = { ...livro };
       delete livroSeguro.qrToken;
+      if (!livro.usuarioNome && !livro.seboNome && livro.usuarioId) {
+        const dono = await buscarUsuarioPorId(livro.usuarioId);
+        livro.usuarioNome = dono?.nome || '';
+      }
       return {
         ...livroSeguro,
         qrUrl,
