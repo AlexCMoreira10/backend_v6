@@ -51,15 +51,31 @@ export const importarAnunciosEmMassa = async (req, res) => {
         continue;
       }
 
+      let dados;
       try {
-        const dados = normalizarLinhaImportacaoLivro(linha.valores);
+        dados = normalizarLinhaImportacaoLivro(linha.valores);
+      } catch (error) {
+        resultados.push({
+          numeroLinha: linha.numeroLinha,
+          valores: linha.valores,
+          erro: error.message || 'Dados inválidos nesta linha.'
+        });
+        continue;
+      }
+
+      try {
         const livro = await criarLivroImportadoSebo({
           seboId: req.seboId,
           dados
         });
         resultados.push({
           numeroLinha: linha.numeroLinha,
-          valores: dados,
+          valores: {
+            ...linha.valores,
+            ...dados,
+            generos: linha.valores.generos || '',
+            imagens: linha.valores.imagens || ''
+          },
           idLivro: livro.id
         });
       } catch (error) {

@@ -1,4 +1,5 @@
 import ExcelJS from 'exceljs';
+import { validarUrlsExternasLivro } from './bookPhotoReference.js';
 
 export const COLUNAS_IMPORTACAO_LIVROS = [
   'titulo',
@@ -12,8 +13,23 @@ export const COLUNAS_IMPORTACAO_LIVROS = [
   'tipo',
   'preco',
   'localizacao',
-  'quantidadeEstoque'
+  'quantidadeEstoque',
+  'pesoGramas',
+  'alturaCm',
+  'larguraCm',
+  'comprimentoCm',
+  'imagens'
 ];
+
+const CAMPOS_DIMENSOES_IMPORTACAO = [
+  ['pesoGramas', 'peso'],
+  ['alturaCm', 'altura'],
+  ['larguraCm', 'largura'],
+  ['comprimentoCm', 'comprimento']
+];
+const MAXIMO_URL_IMAGEM = 2048;
+const bucketNome = process.env.FIREBASE_STORAGE_BUCKET ||
+  `${process.env.FIREBASE_PROJECT_ID || ''}.firebasestorage.app`;
 
 const textoDaCelula = (cell) => {
   if (cell.type === ExcelJS.ValueType.Formula) {
@@ -39,6 +55,46 @@ const numeroDaCelula = (valor, nome, { inteiro = false, opcional = false } = {})
     throw new Error(`A coluna ${nome} precisa conter ${inteiro ? 'um número inteiro' : 'um número válido'}.`);
   }
   return numero;
+};
+
+const normalizarDimensoes = (valores) => {
+  const camposPreenchidos = CAMPOS_DIMENSOES_IMPORTACAO
+    .filter(([campo]) => valores[campo] !== undefined && valores[campo] !== '')
+    .map(([campo]) => campo);
+  if (!camposPreenchidos.length) return undefined;
+
+  const faltantes = CAMPOS_DIMENSOES_IMPORTACAO
+    .filter(([campo]) => valores[campo] === undefined || valores[campo] === '')
+    .map(([campo]) => campo);
+  if (faltantes.length) {
+    throw new Error(`Preencha todas as dimensões do pacote ou deixe todas vazias. Campos faltantes: ${faltantes.join(', ')}.`);
+  }
+
+  const dimensoes = {};
+  for (const [campoPlanilha, campoLivro] of CAMPOS_DIMENSOES_IMPORTACAO) {
+    const valorInformado = valores[campoPlanilha];
+    if (!/^\d+(?:\.\d+)?$/.test(valorInformado)) {
+      throw new Error(`${campoPlanilha} deve conter somente um número, sem unidade.`);
+    }
+    const valor = numeroDaCelula(valorInformado, campoPlanilha);
+    if (valor <= 0) throw new Error(`${campoPlanilha} deve ser maior que zero.`);
+    dimensoes[campoLivro] = valor;
+  }
+  return dimensoes;
+};
+
+const normalizarImagens = (valor = '') => {
+  const fotos = String(valor ?? '')
+    .split(';')
+    .map((url) => url.trim())
+    .filter(Boolean);
+
+  if (fotos.some((url) => url.length > MAXIMO_URL_IMAGEM)) {
+    throw new Error(`imagens: cada URL deve ter no máximo ${MAXIMO_URL_IMAGEM} caracteres.`);
+  }
+  const erro = validarUrlsExternasLivro(fotos, bucketNome);
+  if (erro) throw new Error(`imagens: ${erro}.`);
+  return fotos;
 };
 
 export const normalizarLinhaImportacaoLivro = (valores, anoAtual = new Date().getFullYear()) => {
@@ -82,6 +138,9 @@ export const normalizarLinhaImportacaoLivro = (valores, anoAtual = new Date().ge
     throw new Error('preco deve ficar vazio quando tipo for troca ou doacao.');
   }
 
+  const dimensoes = normalizarDimensoes(valores);
+  const fotos = normalizarImagens(valores.imagens);
+
   return {
     titulo,
     autor,
@@ -97,7 +156,9 @@ export const normalizarLinhaImportacaoLivro = (valores, anoAtual = new Date().ge
     tipo,
     preco,
     localizacao,
-    quantidadeEstoque
+    quantidadeEstoque,
+    ...(dimensoes ? { dimensoes } : {}),
+    fotos
   };
 };
 
@@ -130,7 +191,7 @@ export const criarModeloImportacaoLivros = async () => {
   ];
   instructions.addRows([
     { campo: 'Uso', instrucao: 'Preencha uma linha por livro na aba Livros. Não altere os nomes dos cabeçalhos.' },
-    { campo: 'Obrigatórios', instrucao: 'titulo, autor, tipo, preco (para venda), localizacao.' },
+    { campo: 'Obrigatórios', instrucao: 'titulo, autor, tipo, preco (para venda), localizacao. Os campos novos são opcionais.' },
     { campo: 'tipo', instrucao: 'Use venda, troca ou doacao. Para troca ou doacao, deixe preco vazio.' },
     { campo: 'condicao', instrucao: 'Use novo, bom, regular ou usado. Se vazio, será usado bom.' },
     { campo: 'anoPublicacao', instrucao: `Opcional; use um ano inteiro entre 1500 e ${new Date().getFullYear()}.` },
@@ -138,7 +199,11 @@ export const criarModeloImportacaoLivros = async () => {
     { campo: 'idioma', instrucao: 'Opcional; se vazio, será usado Português (Brasil).' },
     { campo: 'quantidadeEstoque', instrucao: 'Número inteiro maior que zero; se vazio, será usado 1.' },
     { campo: 'localizacao', instrucao: 'Obrigatória; informe onde o livro fica no sebo (ex.: Loja Centro, estante A, prateleira 2).' },
-    { campo: 'Imagens', instrucao: 'Imagens não são importadas pela planilha. Use o cadastro individual para adicionar imagens.' },
+    { campo: 'Dimensões do pacote', instrucao: 'pesoGramas, alturaCm, larguraCm e comprimentoCm são opcionais, mas devem ser preenchidos juntos. São medidas do pacote preparado para envio, não do livro. Informe apenas números, sem unidades; peso em gramas e medidas em centímetros. Se deixar todos vazios, o anúncio ficará sem dimensões para cotação de frete.' },
+    { campo: 'Exemplo de pacote', instrucao: 'pesoGramas: 450; alturaCm: 4; larguraCm: 15; comprimentoCm: 22.' },
+    { campo: 'Imagens', instrucao: 'Opcional; informe até 5 URLs HTTPS públicas e diretas, separadas por ponto e vírgula (;). Cada URL pode ter até 2048 caracteres e não pode exigir autenticação.' },
+    { campo: 'Exemplo de imagens', instrucao: 'URL HTTPS pública da capa; URL HTTPS pública da contracapa. Não use URLs do Firebase Storage; o importador não baixa nem copia imagens.' },
+    { campo: 'Formatos de imagem', instrucao: 'Use URLs que exibam diretamente uma imagem pública (JPEG, PNG ou WebP). O servidor valida e armazena as URLs, sem baixar o conteúdo.' },
     { campo: 'Limites', instrucao: 'Envie somente arquivos .xlsx com até 100 livros por planilha.' }
   ]);
   instructions.getRow(1).font = { bold: true, color: { argb: 'FFFFFFFF' } };
@@ -174,13 +239,10 @@ export const lerPlanilhaImportacaoLivros = async (conteudo) => {
   if (faltantes.length) {
     throw new Error(`Cabeçalhos obrigatórios ausentes: ${faltantes.join(', ')}.`);
   }
-  if (sheet.rowCount > 101) {
-    throw new Error('A planilha pode conter no máximo 100 livros por envio.');
-  }
-
   const linhas = [];
-  for (let numeroLinha = 2; numeroLinha <= sheet.rowCount; numeroLinha += 1) {
-    const row = sheet.getRow(numeroLinha);
+  sheet.eachRow({ includeEmpty: false }, (row, numeroLinha) => {
+    if (numeroLinha === 1) return;
+
     let valores;
     try {
       valores = Object.fromEntries([...cabecalhos].map(([nome, numeroColuna]) => [
@@ -189,15 +251,19 @@ export const lerPlanilhaImportacaoLivros = async (conteudo) => {
       ]));
     } catch (error) {
       linhas.push({ numeroLinha, valores: {}, erro: error.message });
-      continue;
+      if (linhas.length > 100) {
+        throw new Error('A planilha pode conter no máximo 100 livros por envio.');
+      }
+      return;
     }
-    if (Object.values(valores).every((valor) => valor === '')) continue;
-    linhas.push({ numeroLinha, valores });
-  }
+    if (Object.values(valores).every((valor) => valor === '')) return;
 
-  if (linhas.length > 100) {
-    throw new Error('A planilha pode conter no máximo 100 livros por envio.');
-  }
+    linhas.push({ numeroLinha, valores });
+    if (linhas.length > 100) {
+      throw new Error('A planilha pode conter no máximo 100 livros por envio.');
+    }
+  });
+
   if (!linhas.length) throw new Error('Adicione ao menos uma linha de livro na aba Livros.');
   return linhas;
 };
